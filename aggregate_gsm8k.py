@@ -3,7 +3,7 @@ import json
 import pickle
 from collections import defaultdict
 
-import fire
+import fire 
 from tqdm import tqdm
 
 from rap.gsm8k_mcts import ReasoningMCTSNode
