@@ -37,8 +37,9 @@ def setup_model_parallel() -> Tuple[int, int]:
 
 def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, max_batch_size: int) -> LLaMA:
     start_time = time.time()
+    print(ckpt_dir)
     checkpoints = sorted(Path(ckpt_dir).glob("*.pth"))
-    # print(checkpoints)
+    print(checkpoints)
     assert (
             world_size == len(checkpoints)
     ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
@@ -60,7 +61,7 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
     return generator
 
 
-def main_mcts(llama_ckpt='llama-ckpts/30B',
+def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
               prompts='data/gsm8k/prompts/interactive_examples.json',
               question_prompts='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
@@ -96,7 +97,7 @@ def main_mcts(llama_ckpt='llama-ckpts/30B',
     else:
         log_file = None
 
-    tokenizer_path = os.path.join(os.path.dirname(llama_ckpt), "tokenizer.model")
+    tokenizer_path = os.path.join(llama_ckpt, "tokenizer.model")
     llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
 
     world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=log_file)
