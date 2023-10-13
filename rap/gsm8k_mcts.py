@@ -33,8 +33,12 @@ class ReasoningMCTSNode(MCTSNode):
                  parent: 'ReasoningMCTSNode' = None, r0=0.):
         self._conf = None
         self.children = []
-        self.prompt = prompt
+        
+        #? action: the action that makes the last state transits to current state
+        self.prompt = prompt    
+        #? state: current state
         self.question_prompt = question_prompt
+        
         self.gen_fn = gen_fn
         self.reward_fn = reward_fn
         self.depth = depth
@@ -56,6 +60,8 @@ class ReasoningMCTSNode(MCTSNode):
         if self.is_terminal:
             return self.children
         questions, question_prompts, r0 = self.gen_fn(self.prompt, self.question_prompt, self.depth)
+        
+        #? question is action, qp is next_state, r is reward
         for question, qp, r in zip(questions, question_prompts, r0):
             self.children.append(self._child_node(question, qp, r))
         return self.children
@@ -149,6 +155,8 @@ def reasoning_mcts_search(question: str,
     prompt_index = prompts['index']
 
     def gen_fn(inp, q_inp, depth):
+        #? input: last action, current state, depth
+        #? output: possible next actions, corresponding next states, corresponding rewards
         subquestion_prefix = prompts["subquestion_prefix"].format(depth)
         agent_input = inp + subquestion_prefix
         overall_question_output = inp + prompts["overall_question_prefix"].format(depth, overall_question)

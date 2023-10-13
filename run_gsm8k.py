@@ -1,11 +1,9 @@
 import pickle
 import re
 from datetime import datetime
-
 from rap.models import QueryLlama
 from rap.utils.gsm8k import judge_answer_gsm8k, get_gsm8k_dataset
 from rap.gsm8k_mcts import reasoning_mcts_search
-
 from typing import Tuple
 import os
 import sys
@@ -18,7 +16,6 @@ import json
 import random
 import numpy as np
 from pathlib import Path
-
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from tqdm import tqdm
 from llama import ModelArgs, Transformer, Tokenizer, LLaMA
@@ -98,14 +95,71 @@ def main_mcts(llama_ckpt='llama-ckpts/30B',
 
     tokenizer_path = os.path.join(os.path.dirname(llama_ckpt), "tokenizer.model")
     llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
-
     world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=log_file)
 
     examples = get_gsm8k_dataset('test')
     with open(prompts) as f:
         prompts = json.load(f)
+    """ 
+    {
+        "input": 
+            "Given a question, please decompose it into sub-questions. 
+            For each sub-question, please answer it in a complete sentence, ending with \"The answer is\". 
+            When the original question is answerable, please start the subquestion with \"Now we can answer the question: \".\n\n
+            Question 1: ...\n
+                Question 1.1: ...\nAnswer 1.1: ...\n
+                Question 1.2: ...\nAnswer 1.2: ...\n
+                Question 1.3: ...\nAnswer 1.3: ...\n
+                Question 1.4: ...\nAnswer 1.4: ...\n\n
+            Question 2: ...\n
+                Question 2.1: ...\nAnswer 2.1: ...\n
+                Question 2.2: ...\nAnswer 2.2: ...\n\n
+            Question 3: ...\n
+                Question 3.1: ...\nAnswer 3.1: ...\n
+                Question 3.2: ...\nAnswer 3.2: ...\n
+                Question 3.3: ...\nAnswer 3.3: ...\n
+                Question 3.4: ...\nAnswer 3.4: ...\n
+                Question 3.5: ...\nAnswer 3.5: ...\n\n
+            Question 4: ...\n
+                Question 4.1: ...\nAnswer 4.1: ...\n
+                Question 4.2: ...\nAnswer 4.2: ...\n\n",
+        "question_prefix": "Question 5: ",
+        "subquestion_prefix": "Question 5.{}:",
+        "overall_question_prefix": "Question 5.{}: Now we can answer the question: {}\n",
+        "answer_prefix": "Answer 5.{}:",
+        "index": 5
+    }
+    """
     with open(question_prompts) as f:
         question_prompts = json.load(f)
+    """ 
+    {
+        "input": 
+            "Given a question and some sub-questions, determine whether the last sub-question is useful to answer the question. 
+            Output 'Yes' or 'No', and a reason.\n\n
+            Question 1: ...\n
+                Question 1.1: ...\n
+                Question 1.2: ...\n
+                New question 1.3: ...\n
+                Is the new question useful? Yes. We need the answer to calculate how old is Kody now.\n\n
+            Question 2: ...\n
+                New question 2.1: ...\n
+                Is the new question useful? No. The new question is not related to the original question.\n\n
+            Question 3: ...\n
+                Question 3.1: ...\n
+                Question 3.2: ...\n
+                New question 3.3: ...\n
+                Is the new question useful? Yes. We need the answer to calculate the total construction costs.\n\n
+            Question 4: ...\n
+                Question 4.1: ...\n
+                New question 4.2: ...\n
+                Is the new question useful? No. It is too hard to answer the new question based on the current information.\n\n",
+        "question_prefix": "Question 5: ",
+        "subquestion_prefix": "Question 5.{}:",
+        "new_subquestion_prefix": "New question 5.{}:",
+        "answer_prefix": "Is the new question useful?"
+    }
+    """
 
     total_correct = [0] * mcts_rollouts
     for i, example in enumerate((pbar := tqdm(examples, disable=local_rank > 0, position=1))):
