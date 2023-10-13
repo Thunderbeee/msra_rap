@@ -159,7 +159,7 @@ def main_mcts(llama_ckpt='llama-ckpts/30B',
         "new_subquestion_prefix": "New question 5.{}:",
         "answer_prefix": "Is the new question useful?"
     }
-    """
+    """ 
 
     total_correct = [0] * mcts_rollouts
     for i, example in enumerate((pbar := tqdm(examples, disable=local_rank > 0, position=1))):

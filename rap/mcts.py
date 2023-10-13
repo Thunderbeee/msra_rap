@@ -109,7 +109,6 @@ class MCTS:
         if cur not in self.children or not self.children[cur]:
             return cur, -math.inf
         
-        
         return max((self.max_mean_terminal(child, sum + cur.reward, cnt + 1) for child in self.children[cur]), key=lambda x: x[1])
 
     def _back_propagate(self, path: list[MCTSNode], reward=0.):
