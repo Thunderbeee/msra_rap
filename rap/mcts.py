@@ -79,7 +79,7 @@ class MCTS:
             self.children[node] = node.find_children()
 
     @staticmethod
-    def _simulate(path: list[MCTSNode]):
+    def _simulate(path):
         node = path[-1]
         while not node.is_terminal:
             node = node.find_one_child()
@@ -111,7 +111,7 @@ class MCTS:
         
         return max((self.max_mean_terminal(child, sum + cur.reward, cnt + 1) for child in self.children[cur]), key=lambda x: x[1])
 
-    def _back_propagate(self, path: list[MCTSNode], reward=0.):
+    def _back_propagate(self, path, reward=0.):
         coeff = 1
         for node in reversed(path):
             reward = reward * self.discount + node.reward

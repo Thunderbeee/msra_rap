@@ -68,6 +68,7 @@ class ReasoningMCTSNode(MCTSNode):
         return random.choice(self.find_children())
 
     def _calculate_reward(self):
+        breakpoint()
         self.prompt, self._r1, self._ans_list = self.reward_fn(self.prompt, self.depth)
 
     def _static_terminal(self):

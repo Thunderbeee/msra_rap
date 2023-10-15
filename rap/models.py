@@ -11,13 +11,13 @@ class QueryLM(ABC):
         pass
 
     @abstractmethod
-    def query_next_token(self, prompt: list[str]):
+    def query_next_token(self, prompt):
         pass
 
 
 class QueryHfModel(QueryLM):
     # This is not well-tested. Please use LLaMA if possible.
-    def query_next_token(self, prompt: list[str]):
+    def query_next_token(self, prompt):
         raise NotImplementedError
 
     def __init__(self, model, tokenizer, max_response_length, device):
@@ -38,7 +38,7 @@ class QueryHfModel(QueryLM):
 
 
 class QueryLlama(QueryLM):
-    def __init__(self, llamamodel: LLaMA, max_response_length, log_file) -> None:
+    def __init__(self, llamamodel, max_response_length, log_file) -> None:
         self.llamamodel = llamamodel
         self.tokenizer = self.llamamodel.tokenizer
         self.max_response_length = max_response_length
