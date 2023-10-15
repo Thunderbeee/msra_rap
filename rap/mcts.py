@@ -32,9 +32,9 @@ class MCTSNode(ABC):
 
 class MCTS:
     def __init__(self, w_exp=1, discount=1, prior=False, aggr_reward='sum', aggr_child='max'):
-        self.Q: dict[MCTSNode, float] = defaultdict(lambda : 0.)
-        self.N: dict[MCTSNode, int] = defaultdict(lambda : 0)
-        self.M: dict[MCTSNode, float] = defaultdict(lambda : -math.inf)
+        self.Q: dict[MCTSNode, float] = defaultdict(lambda : 0.)    #! total number of wins of this node, used when self.aggr_child == 'mean'
+        self.N: dict[MCTSNode, int] = defaultdict(lambda : 0)       #! number of visits of this node
+        self.M: dict[MCTSNode, float] = defaultdict(lambda : -math.inf) #! max number of wins of this node, used when self.aggr_child == 'max'
         self.children = dict()
         self.w_exp = w_exp
         self.discount = discount
@@ -47,7 +47,7 @@ class MCTS:
             path = self._select_prior(node)
         else:
             path = self._select(node)
-            self._expand(path[-1])
+            self._expand(path[-1])  #! expand the newest added node
             self._simulate(path)
         self._back_propagate(path)
 
@@ -75,6 +75,7 @@ class MCTS:
             node = self._uct_select(node)
 
     def _expand(self, node: MCTSNode):
+        #! add a list of children to an MCTSNode
         if node not in self.children:
             self.children[node] = node.find_children()
 
@@ -107,7 +108,6 @@ class MCTS:
                 return cur, -math.inf
         if cur not in self.children or not self.children[cur]:
             return cur, -math.inf
-        
         
         return max((self.max_mean_terminal(child, sum + cur.reward, cnt + 1) for child in self.children[cur]), key=lambda x: x[1])
 

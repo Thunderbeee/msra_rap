@@ -64,6 +64,7 @@ class QueryLlama(QueryLM):
 
     @torch.no_grad()
     def query_next_token(self, prompts):
+        #! prompts: a list of strings ending with "Is the new question useful?"
         if isinstance(prompts, str):
             prompts = [prompts]
         ret = []
