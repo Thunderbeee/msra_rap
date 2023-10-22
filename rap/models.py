@@ -15,26 +15,26 @@ class QueryLM(ABC):
         pass
 
 
-class QueryHfModel(QueryLM):
-    # This is not well-tested. Please use LLaMA if possible.
-    def query_next_token(self, prompt):
-        raise NotImplementedError
+# class QueryHfModel(QueryLM):
+#     # This is not well-tested. Please use LLaMA if possible.
+#     def query_next_token(self, prompt):
+#         raise NotImplementedError
 
-    def __init__(self, model, tokenizer, max_response_length, device):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.device = device
-        self.n_examples = 1
-        self.max_response_length = max_response_length
+#     def __init__(self, model, tokenizer, max_response_length, device):
+#         self.model = model
+#         self.tokenizer = tokenizer
+#         self.device = device
+#         self.n_examples = 1
+#         self.max_response_length = max_response_length
 
-    def query_LM(self, prompt, **gen_kwargs):
-        with torch.no_grad():
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-            # print("input length", len(inputs))
-            # Generate
-            generate_ids = self.model.generate(inputs.input_ids, max_new_tokens=self.max_response_length, **gen_kwargs)
-            text = self.tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-        return text
+#     def query_LM(self, prompt, **gen_kwargs):
+#         with torch.no_grad():
+#             inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+#             # print("input length", len(inputs))
+#             # Generate
+#             generate_ids = self.model.generate(inputs.input_ids, max_new_tokens=self.max_response_length, **gen_kwargs)
+#             text = self.tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+#         return text
 
 
 class QueryLlama(QueryLM):

@@ -19,6 +19,23 @@ from pathlib import Path
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from tqdm import tqdm
 from llama import ModelArgs, Transformer, Tokenizer, LLaMA 
+from transformers import AutoTokenizer, LlamaForCausalLM
+
+
+def setup_logging(log_dir, llama_ckpt):
+    if log_dir is None:
+        log_dir = f'logs/gsm8k_mcts_{llama_ckpt.split("/")[-1]}/{datetime.now().strftime("%Y-%m%d-%H%M")}'
+    os.makedirs(log_dir, exist_ok=True)    
+
+
+def setup_random():
+    # set random seed 
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
+    torch.cuda.manual_seed(0)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def setup_model_parallel() -> Tuple[int, int]:
@@ -51,14 +68,23 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
     model_args.vocab_size = tokenizer.n_words
     torch.set_default_tensor_type(torch.cuda.HalfTensor)
     model = Transformer(model_args).cuda().half()
+    
+    #! huggingface version of loading LLAMA =======================
+    # tokenizer = AutoTokenizer.from_pretrained("/root/autodl-fs/llama/llama-2-7b-chat-to-hf/")
+    # tokenizer.padding_side = "left"
+    # tokenizer.pad_token = tokenizer.eos_token
+    # model = LlamaForCausalLM.from_pretrained("/root/autodl-fs/llama/llama-2-7b-chat-to-hf/").half().cuda().eval() #! add "half()" to fit in a smaller GPU
+    #! ============================================================
+    
     torch.set_default_tensor_type(torch.FloatTensor)
     model.load_state_dict(checkpoint, strict=False)
+    
     generator = LLaMA(model, tokenizer)
     print(f"Loaded in {time.time() - start_time:.2f} seconds")
     return generator
 
 
-def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
+def main_mcts(llama_ckpt='none',
               prompts='data/gsm8k/prompts/interactive_examples.json',
               question_prompts='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
@@ -74,29 +100,16 @@ def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
               resume=0,
               log_dir=None,
               speedup_confidence_batch_size=None):
-    if log_dir is None:
-        log_dir = f'logs/gsm8k_mcts_{llama_ckpt.split("/")[-1]}/{datetime.now().strftime("%Y-%m%d-%H%M")}'
-    os.makedirs(log_dir, exist_ok=True)
-
-    # set random seed 
-    random.seed(0)
-    np.random.seed(0)
-    torch.manual_seed(0)
-    torch.cuda.manual_seed(0)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    setup_logging(log_dir, llama_ckpt)
+    setup_random()
 
     local_rank, world_size = setup_model_parallel()
-
     if local_rank > 0:
         sys.stdout = open(os.devnull, 'w')
-        log_file = None
-    else:
-        log_file = None
 
     tokenizer_path = os.path.join(llama_ckpt, "tokenizer.model")
     llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
-    world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=log_file)
+    world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=None)
 
     examples = get_gsm8k_dataset('test')
     with open(prompts) as f:
