@@ -25,7 +25,8 @@ from transformers import AutoTokenizer, LlamaForCausalLM
 def setup_logging(log_dir, llama_ckpt):
     if log_dir is None:
         log_dir = f'logs/gsm8k_mcts_{llama_ckpt.split("/")[-1]}/{datetime.now().strftime("%Y-%m%d-%H%M")}'
-    os.makedirs(log_dir, exist_ok=True)    
+    os.makedirs(log_dir, exist_ok=True)   
+    return log_dir
 
 
 def setup_random():
@@ -84,7 +85,7 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
     return generator
 
 
-def main_mcts(llama_ckpt='none',
+def main_mcts(llama_ckpt='/root/autodl-tmp/llama/llama-2-7b',
               decompose_examples='data/gsm8k/prompts/decompose_examples.json',
               useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
@@ -100,9 +101,8 @@ def main_mcts(llama_ckpt='none',
               resume=0,
               log_dir=None,
               speedup_confidence_batch_size=None):
-    setup_logging(log_dir, llama_ckpt)
     setup_random()
-
+    log_dir = setup_logging(log_dir, llama_ckpt)
     local_rank, world_size = setup_model_parallel()
     if local_rank > 0:
         sys.stdout = open(os.devnull, 'w')

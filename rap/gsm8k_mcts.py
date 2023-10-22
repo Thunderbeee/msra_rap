@@ -238,13 +238,12 @@ def reasoning_mcts_search(question: str,
     mcts = MCTS(w_exp=w_exp, prior=True, aggr_reward='mean', aggr_child='max')
     root = ReasoningMCTSNode(decompose, useful, gen_fn, reward_fn,
                              depth=1, r1_default=r1_default, r_alpha=r_alpha, prompt_index=question_group_id)
-    trajs = []
-    trees = []
+    trajs, trees = [], []
     for _ in (pbar := trange(mcts_rollouts, disable=bool(int(os.environ.get("LOCAL_RANK", -1))), position=0)):
         mcts.rollout(root)
         root.print(mcts)
         max_n, max_r = mcts.max_mean_terminal(root)
-        trajs.append(traj := max_n.prompt.split('\n\n')[-1])
+        trajs.append(traj := max_n.partial_solution.split('\n\n')[-1])
         output = re.findall('The answer is (.+).*\\.', traj)
         if len(output) == 0:
             temp_r = 'not found'
