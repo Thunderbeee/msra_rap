@@ -78,7 +78,7 @@ def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
         log_dir = f'logs/gsm8k_mcts_{llama_ckpt.split("/")[-1]}/{datetime.now().strftime("%Y-%m%d-%H%M")}'
     os.makedirs(log_dir, exist_ok=True)
 
-    # set random seed
+    # set random seed 
     random.seed(0)
     np.random.seed(0)
     torch.manual_seed(0)
