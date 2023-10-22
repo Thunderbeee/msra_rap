@@ -18,7 +18,7 @@ import numpy as np
 from pathlib import Path
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from tqdm import tqdm
-from llama import ModelArgs, Transformer, Tokenizer, LLaMA
+from llama import ModelArgs, Transformer, Tokenizer, LLaMA 
 
 
 def setup_model_parallel() -> Tuple[int, int]:
