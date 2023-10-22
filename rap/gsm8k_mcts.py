@@ -11,15 +11,17 @@ from .mcts import MCTS, MCTSNode
 from .models import QueryLM
 
 
-def is_terminal_question(prompt, prompt_index):
-    prompt = prompt.split('\n\n')[-1]
-    if 'Now we can answer' in prompt:
+def reach_terminal_subquestion(partial_solution, question_group_id):
+    generated_question_group = partial_solution.split('\n\n')[-1]
+    if 'Now we can answer' in generated_question_group:
+        #! remember that: when the original question is answerable, please start the subquestion with "Now we can answer the question: "
         return True
-    question = prompt.split('\n')[0]
-    if f'Question {prompt_index}.' not in prompt:
+    if f'Question {question_group_id}.' not in generated_question_group:
         return False
-    last_sub = prompt.split(f'Question {prompt_index}.')[-1].split('\n')[0]
-    if last_sub.lower() in question.lower():
+    
+    last_subquestion = generated_question_group.split(f'Question {question_group_id}.')[-1].split('\n')[0]
+    undecomposed_question = generated_question_group.split('\n')[0]
+    if last_subquestion.lower() in undecomposed_question.lower():
         return True
     return False
 
@@ -29,15 +31,13 @@ class ReasoningMCTSNode(MCTSNode):
     def visited(self):
         return self._visited
 
-    def __init__(self, prompt, question_prompt, gen_fn, reward_fn, depth, r1_default, r_alpha, prompt_index,
+    def __init__(self, decompose, useful, gen_fn, reward_fn, depth, r1_default, r_alpha, prompt_index,
                  parent: 'ReasoningMCTSNode' = None, r0=0.):
         self._conf = None
         self.children = []
         
-        #? action: the action that makes the last state transits to current state
-        self.prompt = prompt    
-        #? state: current state
-        self.question_prompt = question_prompt
+        self.partial_solution = decompose    #! state 
+        self.useful = useful
         
         self.gen_fn = gen_fn
         self.reward_fn = reward_fn
@@ -54,12 +54,12 @@ class ReasoningMCTSNode(MCTSNode):
         return ReasoningMCTSNode(prompt, question_prompt, self.gen_fn, self.reward_fn, self.depth + 1,
                                  self._r1_default, self._r_alpha, self._prompt_index, parent=self, r0=r0)
 
-    def _get_children(self):
+    def _create_children(self):
         self._visited = True
         self._calculate_reward()
         if self.is_terminal:
             return self.children
-        questions, question_prompts, r0 = self.gen_fn(self.prompt, self.question_prompt, self.depth)
+        questions, question_prompts, r0 = self.gen_fn(self.partial_solution, self.useful, self.depth)
         
         #? question is action, qp is next_state, r is reward
         for question, qp, r in zip(questions, question_prompts, r0):
@@ -67,18 +67,17 @@ class ReasoningMCTSNode(MCTSNode):
         return self.children
 
     def find_children(self):
-        self.children = self.children or self._get_children()
+        self.children = self.children or self._create_children()
         return self.children
 
     def find_one_child(self) -> MCTSNode:
         return random.choice(self.find_children())
 
     def _calculate_reward(self):
-        breakpoint()
-        self.prompt, self._r1, self._ans_list = self.reward_fn(self.prompt, self.depth)
+        self.partial_solution, self._r1, self._ans_list = self.reward_fn(self.partial_solution, self.depth)
 
     def _static_terminal(self):
-        return is_terminal_question(self.prompt, self._prompt_index)
+        return reach_terminal_subquestion(self.partial_solution, self._prompt_index)
 
     @property
     def is_terminal(self):
@@ -98,12 +97,12 @@ class ReasoningMCTSNode(MCTSNode):
                 print(*args, file=file)
         p1 = '-' * (4 * self.depth - 4)
         prefix = ' ' * (4 * self.depth - 4)
-        question = 'Q' + self.prompt.split(f'Question {self._prompt_index}')[-1].split('\n')[0]
+        question = 'Q' + self.partial_solution.split(f'Question {self._prompt_index}')[-1].split('\n')[0]
         pprint(p1 + question)
         pprint(prefix + f'R: {self.reward:.3f} ; N: {mcts.N[self]} ; M: {mcts.M[self]:.3f} ; r0 : {self._r0:.3f}')
         if not self.visited:
             return
-        answer = 'A' + self.prompt.split(f'Answer {self._prompt_index}')[-1].split('\n')[0]
+        answer = 'A' + self.partial_solution.split(f'Answer {self._prompt_index}')[-1].split('\n')[0]
         if self.reward < -1:
             if file is not None:
                 pprint(prefix + question)
@@ -116,8 +115,6 @@ class ReasoningMCTSNode(MCTSNode):
             if match is not None:
                 term = '\u25A1' if self.is_terminal else ''
                 pprint(prefix + f'answer: {match[1]} ; ans_list: {self._ans_list} ; r1 : {self._r1:.3f}{term}')
-            # if not self.is_terminal:
-            #     pprint(prefix + f'conf_list : {self._conf_list} ; r2 : {self._r2:.3f}')
         for child in self.children:
             child.print(mcts, file)
         if self.depth == 1:
@@ -136,8 +133,8 @@ class ReasoningMCTSNode(MCTSNode):
 
 
 def reasoning_mcts_search(question: str,
-                          prompts,
-                          question_prompts,
+                          decompose_examples,
+                          useful_examples,
                           world_model: QueryLM,
                           n_sample_subquestion,
                           temperature,
@@ -151,96 +148,96 @@ def reasoning_mcts_search(question: str,
                           speedup_confidence_batch_size=None):
     if speedup_confidence_batch_size is None:
         speedup_confidence_batch_size = n_sample_confidence
-    overall_question = re.match('.*((Calculate|calculate|how|How|what|What|Find|find|True or false).*)$', question)[1]
-    overall_question = overall_question[0].upper() + overall_question[1:]
-    prompt_index = prompts['index']
 
-    def gen_fn(inp, q_inp, depth):
-        #! self.prompt, self.question_prompt, self.depth
+    overall_question = re.match('.*((Calculate|calculate|how|How|what|What|Find|find|True or false).*)$', question)[1]
+    overall_question = overall_question[0].upper() + overall_question[1:]   # capitalize the first letter
+    question_group_id = decompose_examples['index']
+
+    def gen_fn(partial_solution, useful, depth):
+        #! self.partial_solution, self.useful, self.depth
         #? input: last action, current state, depth
         #? output: possible next actions, corresponding next states, corresponding rewards
-        subquestion_prefix = prompts["subquestion_prefix"].format(depth)
-        agent_input = inp + subquestion_prefix
-        overall_question_output = inp + prompts["overall_question_prefix"].format(depth, overall_question)
+        subquestion_prefix = decompose_examples["subquestion_prefix"].format(depth)
+        agent_input = partial_solution + subquestion_prefix
+        overall_question_output = partial_solution + decompose_examples["overall_question_prefix"].format(depth, overall_question)
 
-        if depth == max_depth:
-            agent_output = [overall_question_output]
+        if depth == max_depth:  
+            model_output_list = [overall_question_output]
         else:
             #! LLM generates a list of candidate sub-questions towards next depth (e.g. 4 possible Question 5.2, num_return_sequences=4, depth=2)
-            agent_output = world_model.query_LM(agent_input, do_sample=True, num_return_sequences=n_sample_subquestion,
+            model_output_list = world_model.query_LM(agent_input, do_sample=True, num_return_sequences=n_sample_subquestion,
                                                 eos_token_id=eos_token_id, temperature=temperature)
-            for i, output in enumerate(agent_output):
-                if is_terminal_question(output, prompt_index):
-                    agent_output[i] = overall_question_output
+            for i, candidate_partial_solution in enumerate(model_output_list):
+                if reach_terminal_subquestion(candidate_partial_solution, question_group_id):
+                    model_output_list[i] = overall_question_output
 
         # unique the output
         # set does not guarantee order ; dict guarantees insertion order
-        agent_output = list(dict.fromkeys(agent_output))
-        questions = [o.split(subquestion_prefix)[-1] for o in agent_output]     
-        r0 = r0_fn(q_inp, questions, depth)
+        model_output_list = list(dict.fromkeys(model_output_list))
+        questions = [o.split(subquestion_prefix)[-1] for o in model_output_list]     
+        r0 = r0_fn(useful, questions, depth)
 
         #! new states of next depth (children) (corresponding to each sub-question) (not leaf node)
-        question_output = [q_inp + question_prompts["subquestion_prefix"].format(depth) + q for q in questions]
+        question_output = [useful + useful_examples["subquestion_prefix"].format(depth) + q for q in questions]
 
         #! questions, question_prompts, r0
-        return agent_output, question_output, r0
+        return model_output_list, question_output, r0
 
-    def r0_fn(q_inp, questions, depth):
-        inp = [q_inp + question_prompts["new_subquestion_prefix"].format(depth) +
+    def r0_fn(useful, questions, depth):
+        inp = [useful + useful_examples["new_subquestion_prefix"].format(depth) +
                q.replace('Now we can answer the question: ', '') +
-               question_prompts["answer_prefix"] for q in questions]
+               useful_examples["answer_prefix"] for q in questions]
         yes_no = world_model.query_next_token(inp)
-        return yes_no[:, 0] #! the prob of being "yes"
+        return yes_no[:, 0] #! the prob of answer being "yes"
 
-    def r1_fn(inp, depth):
-        if f'Question {prompt_index}.' not in inp:
-            return 0, inp, []
-        answer_prefix = prompts["answer_prefix"].format(depth - 1)
-        world_input = inp + answer_prefix
+    def r1_fn(partial_solution, depth):
+        if f'Question {question_group_id}.' not in partial_solution:
+            return partial_solution, 0, []
+        answer_prefix = decompose_examples["answer_prefix"].format(depth - 1)   #! Answer 5.x:
+        eliciting_ans_to_subquestion = partial_solution + answer_prefix  
 
-        answer_dict = defaultdict(lambda: [])
-        answer_list = []
-        sampled = 0
-        while sampled < n_sample_confidence:
-            world_output = world_model.query_LM(world_input, do_sample=True,
+        direct_answer_dict = defaultdict(lambda: [])
+        direct_answer_list = []
+        num_sampling_attempts = 0
+        while num_sampling_attempts < n_sample_confidence:
+            model_output_list = world_model.query_LM(eliciting_ans_to_subquestion, do_sample=True,
                                                 num_return_sequences=speedup_confidence_batch_size,
                                                 eos_token_id=eos_token_id, temperature=temperature)
-            sampled += speedup_confidence_batch_size
-            for output in world_output:
-                result = output.strip().split('\n')[-1]
+            num_sampling_attempts += speedup_confidence_batch_size
+            for model_output in model_output_list:
+                result = model_output.strip().split('\n')[-1]
                 match = re.match(r'.*The answer is .*?([ $.0-9,\-]+).*\.$', result)
                 if match is None:
                     continue
-                sub_answer = match[1].replace(',', '').replace('$', '').replace(' ', '')
-                answer_dict[sub_answer].append(output)
-                answer_list.append(sub_answer)
-            if len(answer_dict) == 0:
+                direct_answer = match[1].replace(',', '').replace('$', '').replace(' ', '')
+                direct_answer_dict[direct_answer].append(model_output)
+                direct_answer_list.append(direct_answer)
+            if len(direct_answer_dict) == 0:
                 continue
-            sorted_answer_dict = sorted(answer_dict.items(), key=lambda p: len(p[1]), reverse=True)
-            max_len = len(sorted_answer_dict[0][1])
+            sorted_direct_answer_dict = sorted(direct_answer_dict.items(), key=lambda p: len(p[1]), reverse=True)
+            max_len = len(sorted_direct_answer_dict[0][1])
             if max_len < 2:
                 continue
-            if len(sorted_answer_dict) < 2:
+            if len(sorted_direct_answer_dict) < 2:
                 break
-            second_max_len = len(sorted_answer_dict[1][1])
-            if max_len >= len(answer_dict) / 2 and max_len > second_max_len:
+            second_max_len = len(sorted_direct_answer_dict[1][1])
+            if max_len >= len(direct_answer_dict) / 2 and max_len > second_max_len:
                 break
-        if len(answer_dict) == 0:
-            return -10, output, []
-        answer = sorted_answer_dict[0][1][0]  # [0]: maximum; [1]: list of outputs; [0]: first output in the list
-        r1 = max_len / len(answer_list)
-        return r1, answer, answer_list 
+        if len(direct_answer_dict) == 0:
+            return output, -10, []
+        selected_answer = sorted_direct_answer_dict[0][1][0]  # [0]: maximum; [1]: list of outputs; [0]: first output in the list
+        r1 = max_len / len(direct_answer_list)
+        return selected_answer, r1, direct_answer_list 
 
-    def reward_fn(inp, depth):
-        r1, answer, ans_list = r1_fn(inp, depth)
-        return answer, r1, ans_list
+    def reward_fn(partial_solution, depth):
+        return r1_fn(partial_solution, depth)
 
-    input_prompts = prompts["input"] + prompts["question_prefix"] + question.strip() + "\n"
-    input_question_prompts = question_prompts["input"] + question_prompts["question_prefix"] + question.strip() + "\n"
+    decompose = decompose_examples["input"] + decompose_examples["question_prefix"] + question.strip() + "\n"
+    useful = useful_examples["input"] + useful_examples["question_prefix"] + question.strip() + "\n"
 
     mcts = MCTS(w_exp=w_exp, prior=True, aggr_reward='mean', aggr_child='max')
-    root = ReasoningMCTSNode(input_prompts, input_question_prompts, gen_fn, reward_fn,
-                             depth=1, r1_default=r1_default, r_alpha=r_alpha, prompt_index=prompt_index)
+    root = ReasoningMCTSNode(decompose, useful, gen_fn, reward_fn,
+                             depth=1, r1_default=r1_default, r_alpha=r_alpha, prompt_index=question_group_id)
     trajs = []
     trees = []
     for _ in (pbar := trange(mcts_rollouts, disable=bool(int(os.environ.get("LOCAL_RANK", -1))), position=0)):

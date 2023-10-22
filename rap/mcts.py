@@ -35,7 +35,7 @@ class MCTS:
         self.Q: dict[MCTSNode, float] = defaultdict(lambda : 0.)    #! total number of wins of this node, used when self.aggr_child == 'mean'
         self.N: dict[MCTSNode, int] = defaultdict(lambda : 0)       #! number of visits of this node
         self.M: dict[MCTSNode, float] = defaultdict(lambda : -math.inf) #! max number of wins of this node, used when self.aggr_child == 'max'
-        self.children = dict()
+        self.parent2children = dict()   #! a dictionary mapping from a parent node to a list of children nodes
         self.w_exp = w_exp
         self.discount = discount
         self.prior = prior
@@ -55,7 +55,7 @@ class MCTS:
         path = [node]
         while not node.is_terminal:
             self._expand(node)
-            if len(self.children[node]) == 0:
+            if len(self.parent2children[node]) == 0:
                 return path
             node = self._uct_select(node)
             path.append(node)
@@ -66,18 +66,18 @@ class MCTS:
         path = []
         while True:
             path.append(node)
-            if node not in self.children or node.is_terminal:
+            if node not in self.parent2children or node.is_terminal:
                 return path
-            for child in self.children[node]:
-                if child not in self.children.keys():
+            for child in self.parent2children[node]:
+                if child not in self.parent2children.keys():
                     path.append(child)
                     return path
             node = self._uct_select(node)
 
     def _expand(self, node: MCTSNode):
         #! add a list of children to an MCTSNode
-        if node not in self.children:
-            self.children[node] = node.find_children()
+        if node not in self.parent2children:
+            self.parent2children[node] = node.find_children()
 
     @staticmethod
     def _simulate(path):
@@ -95,9 +95,9 @@ class MCTS:
                 return cur, cur.reward
             else:
                 return cur, -math.inf
-        if cur not in self.children:
+        if cur not in self.parent2children:
             return cur, -math.inf
-        max_n, max_r = max((self.max_terminal(child) for child in self.children[cur]), key=lambda x: x[1])
+        max_n, max_r = max((self.max_terminal(child) for child in self.parent2children[cur]), key=lambda x: x[1])
         return max_n, max_r + cur.reward
 
     def max_mean_terminal(self, cur: MCTSNode, sum=0., cnt=0):
@@ -106,10 +106,10 @@ class MCTS:
                 return cur, (sum + cur.reward) / (cnt + 1)
             else:
                 return cur, -math.inf
-        if cur not in self.children or not self.children[cur]:
+        if cur not in self.parent2children or not self.parent2children[cur]:
             return cur, -math.inf
         
-        return max((self.max_mean_terminal(child, sum + cur.reward, cnt + 1) for child in self.children[cur]), key=lambda x: x[1])
+        return max((self.max_mean_terminal(child, sum + cur.reward, cnt + 1) for child in self.parent2children[cur]), key=lambda x: x[1])
 
     def _back_propagate(self, path, reward=0.):
         coeff = 1
@@ -143,4 +143,4 @@ class MCTS:
             log_n = math.log(1)
         else:
             log_n = math.log(self.N[node])
-        return max(self.children[node], key=lambda n: self._uct(n, log_n))
+        return max(self.parent2children[node], key=lambda n: self._uct(n, log_n))

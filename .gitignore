@@ -5,4 +5,4 @@ logs/
 gpt_sas_plan
 outputs/
 *.pyc
-**/bin
+# **/bin

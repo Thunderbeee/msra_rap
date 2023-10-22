@@ -47,6 +47,10 @@ class QueryLlama(QueryLM):
         self.yes_no = self.tokenizer.encode('Yes No', bos=False, eos=False)
 
     def query_LM(self, prompt, eos_token_id, num_return_sequences=1, do_sample=True, temperature=0.8):
+        """
+        input: prompt
+        output: a list of outputs, length = num_return_sequences
+        """
         temperature = temperature if do_sample else 0
         all_results = []
         for start in range(0, num_return_sequences, self.max_batch_size):

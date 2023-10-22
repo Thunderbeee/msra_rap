@@ -85,8 +85,8 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
 
 
 def main_mcts(llama_ckpt='none',
-              prompts='data/gsm8k/prompts/interactive_examples.json',
-              question_prompts='data/gsm8k/prompts/useful_examples.json',
+              decompose_examples='data/gsm8k/prompts/decompose_examples.json',
+              useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
               max_response_length=200,
               mcts_rollouts=10,
@@ -112,8 +112,8 @@ def main_mcts(llama_ckpt='none',
     world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=None)
 
     examples = get_gsm8k_dataset('test')
-    with open(prompts) as f:
-        prompts = json.load(f)
+    with open(decompose_examples) as f:
+        decompose_examples = json.load(f)
     """ 
     {
         "input": 
@@ -144,8 +144,8 @@ def main_mcts(llama_ckpt='none',
         "index": 5
     }
     """
-    with open(question_prompts) as f:
-        question_prompts = json.load(f)
+    with open(useful_examples) as f:
+        useful_examples = json.load(f)
     """ 
     {
         "input": 
@@ -183,7 +183,7 @@ def main_mcts(llama_ckpt='none',
         answer = example['answer']
         answer = re.search('#### .*?([ $.0-9,\\-]+)', answer)
         answer = '' if answer is None else answer[1].replace(',', '').replace(' ', '').replace('$', '')
-        trajs, tree, trees = reasoning_mcts_search(question, prompts, question_prompts, world_model,
+        trajs, tree, trees = reasoning_mcts_search(question, decompose_examples, useful_examples, world_model,
                                                    n_sample_subquestion=n_sample_subquestion,
                                                    mcts_rollouts=mcts_rollouts,
                                                    n_sample_confidence=n_sample_confidence,
