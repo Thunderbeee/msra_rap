@@ -162,26 +162,26 @@ def reasoning_mcts_search(question: str,
         overall_question_output = partial_solution + decompose_examples["overall_question_prefix"].format(depth, overall_question)
 
         if depth == max_depth:  
-            model_output_list = [overall_question_output]
+            candidate_partial_solutions = [overall_question_output]
         else:
             #! LLM generates a list of candidate sub-questions towards next depth (e.g. 4 possible Question 5.2, num_return_sequences=4, depth=2)
-            model_output_list = world_model.query_LM(eliciting_subquestions, do_sample=True, num_return_sequences=n_sample_subquestion,
+            candidate_partial_solutions = world_model.query_LM(eliciting_subquestions, do_sample=True, num_return_sequences=n_sample_subquestion,
                                                 eos_token_id=eos_token_id, temperature=temperature)
-            for i, candidate_partial_solution in enumerate(model_output_list):
-                if reach_terminal_subquestion(candidate_partial_solution, question_group_id):
-                    model_output_list[i] = overall_question_output
+            for i, candidate in enumerate(candidate_partial_solutions):
+                if reach_terminal_subquestion(candidate, question_group_id):
+                    candidate_partial_solutions[i] = overall_question_output
 
         # unique the output
         # set does not guarantee order ; dict guarantees insertion order
-        model_output_list = list(dict.fromkeys(model_output_list))
-        new_subquestions = [o.split(subquestion_prefix)[-1] for o in model_output_list]     
+        candidate_partial_solutions = list(dict.fromkeys(candidate_partial_solutions))
+        new_subquestions = [o.split(subquestion_prefix)[-1] for o in candidate_partial_solutions]     
         r0 = r0_fn(useful, new_subquestions, depth)
 
-        #! new states of next depth (children) (corresponding to each sub-question) (not leaf node)
-        useful_partial_trace = [useful + useful_examples["subquestion_prefix"].format(depth) + q for q in new_subquestions]
+        useful_partial_trace = [
+            useful + useful_examples["subquestion_prefix"].format(depth) + q 
+            for q in new_subquestions]
 
-        #! questions, question_prompts, r0
-        return model_output_list, useful_partial_trace, r0
+        return candidate_partial_solutions, useful_partial_trace, r0
 
     def r0_fn(useful, new_subquestions, depth):
         """self-evaluation of helpfulness of a new subquestion"""
