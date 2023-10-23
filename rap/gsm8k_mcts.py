@@ -57,7 +57,7 @@ class ReasoningMCTSNode(MCTSNode):
 
     def _create_children(self):
         self._visited = True
-        self._calculate_reward()
+        self._answer_last_subquestion_and_calculate_confidence()
         
         if self.is_terminal:
             return self.children
@@ -79,7 +79,7 @@ class ReasoningMCTSNode(MCTSNode):
     def find_one_child(self) -> MCTSNode:
         return random.choice(self.find_children())
 
-    def _calculate_reward(self):
+    def _answer_last_subquestion_and_calculate_confidence(self):
         self.partial_solution, self._r1, self._ans_list = self.r1_fn(self.partial_solution, self.depth)
 
     def _static_terminal(self):
@@ -183,7 +183,8 @@ def reasoning_mcts_search(question: str,
         return candidate_partial_sol_list, partial_useful_prompt_list, r0_list
 
     def r0_fn(partial_useful_prompt, new_subquestions, depth):
-        """self-evaluation of helpfulness of a new subquestion"""
+        """self-evaluation of helpfulness of newly generated subquestions"""
+        
         inp = [partial_useful_prompt + useful_examples["new_subquestion_prefix"].format(depth) +
                q.replace('Now we can answer the question: ', '') +
                useful_examples["answer_prefix"] for q in new_subquestions]
@@ -191,9 +192,13 @@ def reasoning_mcts_search(question: str,
         return yes_no[:, 0] #! the probs of answer being "yes"
 
     def r1_fn(partial_solution, depth):
-        """confidence"""
+        """calculate the confidence of the chosen answer
+        Note that here the last subquestion in the partial solution has no answer yet.
+        """
+        
         if f'Question {question_group_id}.' not in partial_solution:
             return partial_solution, 0, []
+        
         answer_prefix = decompose_examples["answer_prefix"].format(depth - 1)   #! Answer 5.x:
         eliciting_ans_to_subquestion = partial_solution + answer_prefix  
 
@@ -225,15 +230,15 @@ def reasoning_mcts_search(question: str,
             second_max_len = len(sorted_direct_answer_dict[1][1])
             if max_len >= len(direct_answer_dict) / 2 and max_len > second_max_len:
                 break
-            
+        
         if len(direct_answer_dict) == 0:
             return output, -10, []
         
-        selected_partial_solution = sorted_direct_answer_dict[0][1][0]  
+        partial_solution_with_best_ans = sorted_direct_answer_dict[0][1][0]  
         # [0]: the direct answer with maximum confidence; [1]: list of outputs; [0]: first output in the list
        
         r1 = max_len / len(direct_answer_list)  # confidence of the direct answer
-        return selected_partial_solution, r1, direct_answer_list 
+        return partial_solution_with_best_ans, r1, direct_answer_list 
 
     if speedup_confidence_batch_size is None:
         speedup_confidence_batch_size = n_sample_confidence
