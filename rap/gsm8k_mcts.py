@@ -158,14 +158,14 @@ def reasoning_mcts_search(question: str,
         #? input: last action, current state, depth
         #? output: possible next actions, corresponding next states, corresponding rewards
         subquestion_prefix = decompose_examples["subquestion_prefix"].format(depth)
-        agent_input = partial_solution + subquestion_prefix
+        eliciting_subquestions = partial_solution + subquestion_prefix
         overall_question_output = partial_solution + decompose_examples["overall_question_prefix"].format(depth, overall_question)
 
         if depth == max_depth:  
             model_output_list = [overall_question_output]
         else:
             #! LLM generates a list of candidate sub-questions towards next depth (e.g. 4 possible Question 5.2, num_return_sequences=4, depth=2)
-            model_output_list = world_model.query_LM(agent_input, do_sample=True, num_return_sequences=n_sample_subquestion,
+            model_output_list = world_model.query_LM(eliciting_subquestions, do_sample=True, num_return_sequences=n_sample_subquestion,
                                                 eos_token_id=eos_token_id, temperature=temperature)
             for i, candidate_partial_solution in enumerate(model_output_list):
                 if reach_terminal_subquestion(candidate_partial_solution, question_group_id):
@@ -174,23 +174,25 @@ def reasoning_mcts_search(question: str,
         # unique the output
         # set does not guarantee order ; dict guarantees insertion order
         model_output_list = list(dict.fromkeys(model_output_list))
-        questions = [o.split(subquestion_prefix)[-1] for o in model_output_list]     
-        r0 = r0_fn(useful, questions, depth)
+        new_subquestions = [o.split(subquestion_prefix)[-1] for o in model_output_list]     
+        r0 = r0_fn(useful, new_subquestions, depth)
 
         #! new states of next depth (children) (corresponding to each sub-question) (not leaf node)
-        question_output = [useful + useful_examples["subquestion_prefix"].format(depth) + q for q in questions]
+        useful_partial_trace = [useful + useful_examples["subquestion_prefix"].format(depth) + q for q in new_subquestions]
 
         #! questions, question_prompts, r0
-        return model_output_list, question_output, r0
+        return model_output_list, useful_partial_trace, r0
 
-    def r0_fn(useful, questions, depth):
+    def r0_fn(useful, new_subquestions, depth):
+        """self-evaluation of helpfulness of a new subquestion"""
         inp = [useful + useful_examples["new_subquestion_prefix"].format(depth) +
                q.replace('Now we can answer the question: ', '') +
-               useful_examples["answer_prefix"] for q in questions]
+               useful_examples["answer_prefix"] for q in new_subquestions]
         yes_no = world_model.query_next_token(inp)
-        return yes_no[:, 0] #! the prob of answer being "yes"
+        return yes_no[:, 0] #! the probs of answer being "yes"
 
     def r1_fn(partial_solution, depth):
+        """confidence"""
         if f'Question {question_group_id}.' not in partial_solution:
             return partial_solution, 0, []
         answer_prefix = decompose_examples["answer_prefix"].format(depth - 1)   #! Answer 5.x:
@@ -241,7 +243,7 @@ def reasoning_mcts_search(question: str,
     trajs, trees = [], []
     for _ in (pbar := trange(mcts_rollouts, disable=bool(int(os.environ.get("LOCAL_RANK", -1))), position=0)):
         mcts.rollout(root)
-        root.print(mcts)
+        # root.print(mcts)
         max_n, max_r = mcts.max_mean_terminal(root)
         trajs.append(traj := max_n.partial_solution.split('\n\n')[-1])
         output = re.findall('The answer is (.+).*\\.', traj)
@@ -255,6 +257,7 @@ def reasoning_mcts_search(question: str,
         tree_copy.N = dict(mcts.N)
         tree_copy.M = dict(mcts.M)
         trees.append(tree_copy)
+        breakpoint()
 
     with io.StringIO() as f:
         root.print(mcts, file=f)
