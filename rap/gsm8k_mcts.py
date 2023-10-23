@@ -50,20 +50,25 @@ class ReasoningMCTSNode(MCTSNode):
         self.parent = parent
         self._prompt_index = prompt_index
 
-    def _child_node(self, prompt, question_prompt, r0):
-        return ReasoningMCTSNode(prompt, question_prompt, self.gen_fn, self.reward_fn, self.depth + 1,
+    def _make_child_node(self, candidate_partial_sol, useful_partial_trace, r0):
+        return ReasoningMCTSNode(candidate_partial_sol, useful_partial_trace, self.gen_fn, self.reward_fn, self.depth + 1,
                                  self._r1_default, self._r_alpha, self._prompt_index, parent=self, r0=r0)
 
     def _create_children(self):
         self._visited = True
         self._calculate_reward()
+        
         if self.is_terminal:
             return self.children
-        questions, question_prompts, r0 = self.gen_fn(self.partial_solution, self.useful, self.depth)
         
-        #? question is action, qp is next_state, r is reward
-        for question, qp, r in zip(questions, question_prompts, r0):
-            self.children.append(self._child_node(question, qp, r))
+        candidate_partial_sol_list, useful_partial_trace_list, r0_list = self.gen_fn(
+            self.partial_solution, self.useful, self.depth)
+        
+        for candidate_partial_sol, useful_partial_trace, r0 in zip(
+            candidate_partial_sol_list, useful_partial_trace_list, r0_list):
+            self.children.append(
+                self._make_child_node(candidate_partial_sol, useful_partial_trace, r0))
+            
         return self.children
 
     def find_children(self):
@@ -162,26 +167,26 @@ def reasoning_mcts_search(question: str,
         overall_question_output = partial_solution + decompose_examples["overall_question_prefix"].format(depth, overall_question)
 
         if depth == max_depth:  
-            candidate_partial_solutions = [overall_question_output]
+            candidate_partial_sol_list = [overall_question_output]
         else:
             #! generate partial solutions (subquestions without answers appended to them)
-            candidate_partial_solutions = world_model.query_LM(eliciting_subquestions, do_sample=True, num_return_sequences=n_sample_subquestion,
+            candidate_partial_sol_list = world_model.query_LM(eliciting_subquestions, do_sample=True, num_return_sequences=n_sample_subquestion,
                                                 eos_token_id=eos_token_id, temperature=temperature)
-            for i, candidate in enumerate(candidate_partial_solutions):
+            for i, candidate in enumerate(candidate_partial_sol_list):
                 if reach_terminal_subquestion(candidate, question_group_id):
-                    candidate_partial_solutions[i] = overall_question_output
+                    candidate_partial_sol_list[i] = overall_question_output
 
         # unique the output
         # set does not guarantee order ; dict guarantees insertion order
-        candidate_partial_solutions = list(dict.fromkeys(candidate_partial_solutions))
-        new_subquestions = [o.split(subquestion_prefix)[-1] for o in candidate_partial_solutions]     
-        r0 = r0_fn(useful, new_subquestions, depth)
+        candidate_partial_sol_list = list(dict.fromkeys(candidate_partial_sol_list))
+        new_subquestions = [o.split(subquestion_prefix)[-1] for o in candidate_partial_sol_list]     
+        r0_list = r0_fn(useful, new_subquestions, depth)
 
-        useful_partial_trace = [
+        useful_partial_trace_list = [
             useful + useful_examples["subquestion_prefix"].format(depth) + q 
             for q in new_subquestions]
 
-        return candidate_partial_solutions, useful_partial_trace, r0
+        return candidate_partial_sol_list, useful_partial_trace_list, r0_list
 
     def r0_fn(useful, new_subquestions, depth):
         """self-evaluation of helpfulness of a new subquestion"""
@@ -203,11 +208,11 @@ def reasoning_mcts_search(question: str,
         num_sampling_attempts = 0
         while num_sampling_attempts < n_sample_confidence:
             #! generate partial solutions (with answers appended to subquestions)
-            candidate_partial_solutions = world_model.query_LM(eliciting_ans_to_subquestion, do_sample=True,
+            candidate_partial_sol_list = world_model.query_LM(eliciting_ans_to_subquestion, do_sample=True,
                                                 num_return_sequences=speedup_confidence_batch_size,
                                                 eos_token_id=eos_token_id, temperature=temperature)
             num_sampling_attempts += speedup_confidence_batch_size
-            for candidate in candidate_partial_solutions:
+            for candidate in candidate_partial_sol_list:
                 result = candidate.strip().split('\n')[-1]
                 match = re.match(r'.*The answer is .*?([ $.0-9,\-]+).*\.$', result)
                 if match is None:
@@ -265,4 +270,5 @@ def reasoning_mcts_search(question: str,
     with io.StringIO() as f:
         root.print(mcts, file=f)
         tree = f.getvalue()
+
     return trajs, tree, trees
