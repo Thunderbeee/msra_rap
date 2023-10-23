@@ -175,7 +175,7 @@ def main_mcts(llama_ckpt='/root/autodl-tmp/llama/llama-2-7b',
     }
     """ 
 
-    total_correct = [0] * mcts_rollouts
+    total_correct = [0] * mcts_rollouts 
     for i, example in enumerate((pbar := tqdm(examples, disable=local_rank > 0, position=1))):
         if i < resume:
             continue

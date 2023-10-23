@@ -100,6 +100,7 @@ class ReasoningMCTSNode(MCTSNode):
                 tqdm.write(*args)
             else:
                 print(*args, file=file)
+
         p1 = '-' * (4 * self.depth - 4)
         prefix = ' ' * (4 * self.depth - 4)
         question = 'Q' + self.partial_solution.split(f'Question {self._prompt_index}')[-1].split('\n')[0]
@@ -151,12 +152,7 @@ def reasoning_mcts_search(question: str,
                           r1_default,
                           eos_token_id,
                           speedup_confidence_batch_size=None):
-    if speedup_confidence_batch_size is None:
-        speedup_confidence_batch_size = n_sample_confidence
-
-    overall_question = re.match('.*((Calculate|calculate|how|How|what|What|Find|find|True or false).*)$', question)[1]
-    overall_question = overall_question[0].upper() + overall_question[1:]   # capitalize the first letter
-    question_group_id = decompose_examples['index']
+    """conduct mcts_rollouts rollouts, given a question"""
 
     def gen_fn(partial_solution, useful, depth):
         #! self.partial_solution, self.useful, self.depth
@@ -241,6 +237,13 @@ def reasoning_mcts_search(question: str,
 
     def reward_fn(partial_solution, depth):
         return r1_fn(partial_solution, depth)
+
+    if speedup_confidence_batch_size is None:
+        speedup_confidence_batch_size = n_sample_confidence
+
+    overall_question = re.match('.*((Calculate|calculate|how|How|what|What|Find|find|True or false).*)$', question)[1]
+    overall_question = overall_question[0].upper() + overall_question[1:]   # capitalize the first letter
+    question_group_id = decompose_examples['index']
 
     decompose = decompose_examples["input"] + decompose_examples["question_prefix"] + question.strip() + "\n"
     useful = useful_examples["input"] + useful_examples["question_prefix"] + question.strip() + "\n"
