@@ -103,7 +103,7 @@ class MCTS:
     def max_mean_terminal(self, cur: MCTSNode, sum=0., cnt=0):
         if cur.is_terminal:
             if cur.visited:
-                return cur, (sum + cur.reward) / (cnt + 1)
+                return cur, (sum + cur.reward) / (cnt + 1)  #! average the sum along the path from root to terminal node
             else:
                 return cur, -math.inf
         if cur not in self.parent2children or not self.parent2children[cur]:

@@ -31,16 +31,17 @@ class ReasoningMCTSNode(MCTSNode):
     def visited(self):
         return self._visited
 
-    def __init__(self, decompose, useful, gen_fn, reward_fn, depth, r1_default, r_alpha, prompt_index,
+    def __init__(self, decompose, useful, gen_fn, r1_fn, depth, r1_default, r_alpha, prompt_index,
                  parent: 'ReasoningMCTSNode' = None, r0=0.):
         self._conf = None
         self.children = []
         
-        self.partial_solution = decompose    #! state 
-        self.useful = useful
+        #! state: partial solution and partial useful prompt
+        self.partial_solution = decompose    
+        self.partial_useful_prompt = useful
         
         self.gen_fn = gen_fn
-        self.reward_fn = reward_fn
+        self.r1_fn = r1_fn
         self.depth = depth
         self._r0 = r0
         self._r1 = self._r1_default = r1_default
@@ -50,8 +51,8 @@ class ReasoningMCTSNode(MCTSNode):
         self.parent = parent
         self._prompt_index = prompt_index
 
-    def _make_child_node(self, candidate_partial_sol, useful_partial_trace, r0):
-        return ReasoningMCTSNode(candidate_partial_sol, useful_partial_trace, self.gen_fn, self.reward_fn, self.depth + 1,
+    def _make_child_node(self, candidate_partial_sol, partial_useful_prompt, r0):
+        return ReasoningMCTSNode(candidate_partial_sol, partial_useful_prompt, self.gen_fn, self.r1_fn, self.depth + 1,
                                  self._r1_default, self._r_alpha, self._prompt_index, parent=self, r0=r0)
 
     def _create_children(self):
@@ -61,13 +62,13 @@ class ReasoningMCTSNode(MCTSNode):
         if self.is_terminal:
             return self.children
         
-        candidate_partial_sol_list, useful_partial_trace_list, r0_list = self.gen_fn(
-            self.partial_solution, self.useful, self.depth)
+        candidate_partial_sol_list, partial_useful_prompt_list, r0_list = self.gen_fn(
+            self.partial_solution, self.partial_useful_prompt, self.depth)
         
-        for candidate_partial_sol, useful_partial_trace, r0 in zip(
-            candidate_partial_sol_list, useful_partial_trace_list, r0_list):
+        for candidate_partial_sol, partial_useful_prompt, r0 in zip(
+            candidate_partial_sol_list, partial_useful_prompt_list, r0_list):
             self.children.append(
-                self._make_child_node(candidate_partial_sol, useful_partial_trace, r0))
+                self._make_child_node(candidate_partial_sol, partial_useful_prompt, r0))
             
         return self.children
 
@@ -79,7 +80,7 @@ class ReasoningMCTSNode(MCTSNode):
         return random.choice(self.find_children())
 
     def _calculate_reward(self):
-        self.partial_solution, self._r1, self._ans_list = self.reward_fn(self.partial_solution, self.depth)
+        self.partial_solution, self._r1, self._ans_list = self.r1_fn(self.partial_solution, self.depth)
 
     def _static_terminal(self):
         return reach_terminal_subquestion(self.partial_solution, self._prompt_index)
@@ -128,13 +129,13 @@ class ReasoningMCTSNode(MCTSNode):
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        if self.gen_fn is None or self.reward_fn is None:
+        if self.gen_fn is None or self.r1_fn is None:
             warnings.warn('MCTSNode loaded from pickle is read-only; Do not further roll out the tree!')
 
     def __getstate__(self):
         state = self.__dict__.copy()
         state['gen_fn'] = None
-        state['reward_fn'] = None
+        state['r1_fn'] = None
         return state
 
 
@@ -154,10 +155,7 @@ def reasoning_mcts_search(question: str,
                           speedup_confidence_batch_size=None):
     """conduct mcts_rollouts rollouts, given a question"""
 
-    def gen_fn(partial_solution, useful, depth):
-        #! self.partial_solution, self.useful, self.depth
-        #? input: last action, current state, depth
-        #? output: possible next actions, corresponding next states, corresponding rewards
+    def gen_fn(partial_solution, partial_useful_prompt, depth):
         subquestion_prefix = decompose_examples["subquestion_prefix"].format(depth)
         eliciting_subquestions = partial_solution + subquestion_prefix
         overall_question_output = partial_solution + decompose_examples["overall_question_prefix"].format(depth, overall_question)
@@ -176,17 +174,17 @@ def reasoning_mcts_search(question: str,
         # set does not guarantee order ; dict guarantees insertion order
         candidate_partial_sol_list = list(dict.fromkeys(candidate_partial_sol_list))
         new_subquestions = [o.split(subquestion_prefix)[-1] for o in candidate_partial_sol_list]     
-        r0_list = r0_fn(useful, new_subquestions, depth)
+        r0_list = r0_fn(partial_useful_prompt, new_subquestions, depth)
 
-        useful_partial_trace_list = [
-            useful + useful_examples["subquestion_prefix"].format(depth) + q 
+        partial_useful_prompt_list = [
+            partial_useful_prompt + useful_examples["subquestion_prefix"].format(depth) + q 
             for q in new_subquestions]
 
-        return candidate_partial_sol_list, useful_partial_trace_list, r0_list
+        return candidate_partial_sol_list, partial_useful_prompt_list, r0_list
 
-    def r0_fn(useful, new_subquestions, depth):
+    def r0_fn(partial_useful_prompt, new_subquestions, depth):
         """self-evaluation of helpfulness of a new subquestion"""
-        inp = [useful + useful_examples["new_subquestion_prefix"].format(depth) +
+        inp = [partial_useful_prompt + useful_examples["new_subquestion_prefix"].format(depth) +
                q.replace('Now we can answer the question: ', '') +
                useful_examples["answer_prefix"] for q in new_subquestions]
         yes_no = world_model.query_next_token(inp)
@@ -227,16 +225,15 @@ def reasoning_mcts_search(question: str,
             second_max_len = len(sorted_direct_answer_dict[1][1])
             if max_len >= len(direct_answer_dict) / 2 and max_len > second_max_len:
                 break
+            
         if len(direct_answer_dict) == 0:
             return output, -10, []
+        
         selected_partial_solution = sorted_direct_answer_dict[0][1][0]  
         # [0]: the direct answer with maximum confidence; [1]: list of outputs; [0]: first output in the list
        
         r1 = max_len / len(direct_answer_list)  # confidence of the direct answer
         return selected_partial_solution, r1, direct_answer_list 
-
-    def reward_fn(partial_solution, depth):
-        return r1_fn(partial_solution, depth)
 
     if speedup_confidence_batch_size is None:
         speedup_confidence_batch_size = n_sample_confidence
@@ -249,20 +246,21 @@ def reasoning_mcts_search(question: str,
     useful = useful_examples["input"] + useful_examples["question_prefix"] + question.strip() + "\n"
 
     mcts = MCTS(w_exp=w_exp, prior=True, aggr_reward='mean', aggr_child='max')
-    root = ReasoningMCTSNode(decompose, useful, gen_fn, reward_fn,
+    root = ReasoningMCTSNode(decompose, useful, gen_fn, r1_fn,
                              depth=1, r1_default=r1_default, r_alpha=r_alpha, prompt_index=question_group_id)
     trajs, trees = [], []
     for _ in (pbar := trange(mcts_rollouts, disable=bool(int(os.environ.get("LOCAL_RANK", -1))), position=0)):
         mcts.rollout(root)
-        # root.print(mcts)
-        max_n, max_r = mcts.max_mean_terminal(root)
-        trajs.append(traj := max_n.partial_solution.split('\n\n')[-1])
+        root.print(mcts)
+        breakpoint()
+        best_terminal_node, path_reward = mcts.max_mean_terminal(root)
+        trajs.append(traj := best_terminal_node.partial_solution.split('\n\n')[-1])
         output = re.findall('The answer is (.+).*\\.', traj)
         if len(output) == 0:
             temp_r = 'not found'
         else:
             temp_r = output[-1].replace(',', '')
-        pbar.set_description(f'{max_r:.3f} {temp_r}')
+        pbar.set_description(f'path reward: {path_reward:.3f}; {temp_r}')
         tree_copy = deepcopy(root)
         tree_copy.Q = dict(mcts.Q)
         tree_copy.N = dict(mcts.N)
