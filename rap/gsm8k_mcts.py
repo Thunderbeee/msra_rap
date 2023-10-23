@@ -41,10 +41,10 @@ class ReasoningMCTSNode(MCTSNode):
         self.partial_useful_prompt = useful
         
         self.gen_fn = gen_fn
-        self.r1_fn = r1_fn
+        self.r1_fn = r1_fn  
         self.depth = depth
-        self._r0 = r0
-        self._r1 = self._r1_default = r1_default
+        self._r0 = r0   #! usefulness score
+        self._r1 = self._r1_default = r1_default    #! confidence score
         self._r_alpha = r_alpha
         self._ans_list = None
         self._visited = False
