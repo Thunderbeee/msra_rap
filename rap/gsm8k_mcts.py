@@ -20,8 +20,8 @@ def reach_terminal_subquestion(partial_solution, question_group_id):
         return False
     
     last_subquestion = generated_question_group.split(f'Question {question_group_id}.')[-1].split('\n')[0]
-    undecomposed_question = generated_question_group.split('\n')[0]
-    if last_subquestion.lower() in undecomposed_question.lower():
+    big_question = generated_question_group.split('\n')[0]
+    if last_subquestion.lower() in big_question.lower():
         return True
     return False
 
@@ -164,7 +164,7 @@ def reasoning_mcts_search(question: str,
         if depth == max_depth:  
             candidate_partial_solutions = [overall_question_output]
         else:
-            #! LLM generates a list of candidate sub-questions towards next depth (e.g. 4 possible Question 5.2, num_return_sequences=4, depth=2)
+            #! generate partial solutions (subquestions without answers appended to them)
             candidate_partial_solutions = world_model.query_LM(eliciting_subquestions, do_sample=True, num_return_sequences=n_sample_subquestion,
                                                 eos_token_id=eos_token_id, temperature=temperature)
             for i, candidate in enumerate(candidate_partial_solutions):
@@ -202,17 +202,18 @@ def reasoning_mcts_search(question: str,
         direct_answer_list = []
         num_sampling_attempts = 0
         while num_sampling_attempts < n_sample_confidence:
-            model_output_list = world_model.query_LM(eliciting_ans_to_subquestion, do_sample=True,
+            #! generate partial solutions (with answers appended to subquestions)
+            candidate_partial_solutions = world_model.query_LM(eliciting_ans_to_subquestion, do_sample=True,
                                                 num_return_sequences=speedup_confidence_batch_size,
                                                 eos_token_id=eos_token_id, temperature=temperature)
             num_sampling_attempts += speedup_confidence_batch_size
-            for model_output in model_output_list:
-                result = model_output.strip().split('\n')[-1]
+            for candidate in candidate_partial_solutions:
+                result = candidate.strip().split('\n')[-1]
                 match = re.match(r'.*The answer is .*?([ $.0-9,\-]+).*\.$', result)
                 if match is None:
                     continue
                 direct_answer = match[1].replace(',', '').replace('$', '').replace(' ', '')
-                direct_answer_dict[direct_answer].append(model_output)
+                direct_answer_dict[direct_answer].append(candidate)
                 direct_answer_list.append(direct_answer)
             if len(direct_answer_dict) == 0:
                 continue
@@ -227,9 +228,11 @@ def reasoning_mcts_search(question: str,
                 break
         if len(direct_answer_dict) == 0:
             return output, -10, []
-        selected_answer = sorted_direct_answer_dict[0][1][0]  # [0]: maximum; [1]: list of outputs; [0]: first output in the list
-        r1 = max_len / len(direct_answer_list)
-        return selected_answer, r1, direct_answer_list 
+        selected_partial_solution = sorted_direct_answer_dict[0][1][0]  
+        # [0]: the direct answer with maximum confidence; [1]: list of outputs; [0]: first output in the list
+       
+        r1 = max_len / len(direct_answer_list)  # confidence of the direct answer
+        return selected_partial_solution, r1, direct_answer_list 
 
     def reward_fn(partial_solution, depth):
         return r1_fn(partial_solution, depth)
