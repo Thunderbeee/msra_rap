@@ -45,6 +45,7 @@ class QueryLlama(QueryLM):
         self.log_file = log_file
         self.max_batch_size = llamamodel.model.params.max_batch_size
         self.yes_no = self.tokenizer.encode('Yes No', bos=False, eos=False)
+        self.easy_medium_hard = self.tokenizer.encode('easy medium hard', bos=False, eos=False)
 
     def query_LM(self, prompt, eos_token_id, num_return_sequences=1, do_sample=True, temperature=0.8):
         """
@@ -82,3 +83,12 @@ class QueryLlama(QueryLM):
         dist = torch.softmax(filtered, dim=-1)
         return dist
 
+    @torch.no_grad()
+    def query_difficulty_word(self, model_input):
+        tokens = self.tokenizer.encode(model_input, bos=True, eos=False)
+        tokens = torch.tensor([tokens]).cuda().long()
+        output, h = self.llamamodel.model.forward(tokens, start_pos=0)  #! output: [1, 32000]
+        filtered = output[:, self.easy_medium_hard]
+        dist = torch.softmax(filtered, dim=-1)  #! dist: [1, 3]
+        max_id = torch.argmax(dist, dim=-1, keepdim=False) #! [1]
+        return ["easy", "medium", "hard"][max_id.item()]
