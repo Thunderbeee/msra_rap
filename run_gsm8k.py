@@ -190,7 +190,7 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
         # continue
         
         #! ========================================
-        trajs, tree, trees = reasoning_mcts_search(question, decompose_examples, useful_examples, world_model,
+        trajs, tree, trees, extra_info = reasoning_mcts_search(question, decompose_examples, useful_examples, world_model,
                                                    n_sample_subquestion=n_sample_subquestion,
                                                    mcts_rollouts=mcts_rollouts,
                                                    n_sample_confidence=n_sample_confidence,
@@ -214,6 +214,9 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
                     'output': output,
                     'correct': correct,
                     'traj': traj,
+                    'query_LM_counter': extra_info.query_LM_counter,
+                    'num_subq_prefix': extra_info.num_subq_prefix,
+                    'exec_time': extra_info.exec_time
                 })
                 total_correct[rollout] += correct
             with open(os.path.join(log_dir, f'{i:04d}.json'), 'w') as f:

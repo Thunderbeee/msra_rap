@@ -6,9 +6,14 @@ import warnings
 from collections import defaultdict
 from copy import deepcopy
 from tqdm import tqdm, trange
+import time
 
 from .mcts import MCTS, MCTSNode
-from .models import QueryLM
+from .helpers import *
+from .models import QueryLM, QueryLlama
+
+
+extra_info = ExtraInfo()
 
 
 def reach_terminal_subquestion(partial_solution, question_group_id):
@@ -142,7 +147,7 @@ class ReasoningMCTSNode(MCTSNode):
 def reasoning_mcts_search(question: str,
                           decompose_examples,
                           useful_examples,
-                          world_model: QueryLM,
+                          world_model: QueryLlama,
                           n_sample_subquestion,
                           temperature,
                           mcts_rollouts,
@@ -162,6 +167,7 @@ def reasoning_mcts_search(question: str,
 
         if depth == max_depth:  
             candidate_partial_sol_list = [overall_question_output]
+            extra_info.num_hit_max_depth += 1
         else:
             #! generate partial solutions (subquestions without answers appended to them)
             candidate_partial_sol_list = world_model.query_LM(eliciting_subquestions, do_sample=True, num_return_sequences=n_sample_subquestion,
@@ -232,13 +238,17 @@ def reasoning_mcts_search(question: str,
                 break
         
         if len(direct_answer_dict) == 0:
-            return output, -10, []
+            return candidate, -10, []
         
         partial_solution_with_best_ans = sorted_direct_answer_dict[0][1][0]  
         # [0]: the direct answer with maximum confidence; [1]: list of outputs; [0]: first output in the list
        
         r1 = max_len / len(direct_answer_list)  # confidence of the direct answer
         return partial_solution_with_best_ans, r1, direct_answer_list 
+
+    extra_info.reset()
+    world_model.reset_counter()
+    start = time.time()
 
     if speedup_confidence_batch_size is None:
         speedup_confidence_batch_size = n_sample_confidence
@@ -275,4 +285,9 @@ def reasoning_mcts_search(question: str,
         root.print(mcts, file=f)
         tree = f.getvalue()
 
-    return trajs, tree, trees
+    end = time.time()
+
+    extra_info.query_LM_counter = world_model.query_LM_counter
+    extra_info.exec_time = end - start
+
+    return trajs, tree, trees, extra_info
