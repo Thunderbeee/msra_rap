@@ -91,7 +91,7 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
               useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
               max_response_length=200,
-              mcts_rollouts=1,
+              mcts_rollouts=10,
               n_sample_subquestion=4,
               n_sample_confidence=8,
               temperature=0.8,
@@ -215,7 +215,7 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
                     'correct': correct,
                     'traj': traj,
                     'query_LM_counter': extra_info.query_LM_counter,
-                    'num_subq_prefix': extra_info.num_subq_prefix,
+                    'num_hit_max_depth': extra_info.num_hit_max_depth,
                     'exec_time': extra_info.exec_time
                 })
                 total_correct[rollout] += correct
