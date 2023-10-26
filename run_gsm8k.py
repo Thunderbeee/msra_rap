@@ -4,6 +4,7 @@ from datetime import datetime
 from rap.models import QueryLlama
 from rap.utils.gsm8k import judge_answer_gsm8k, get_gsm8k_dataset
 from rap.gsm8k_mcts import reasoning_mcts_search
+from rap.helpers import *
 from typing import Tuple
 import os
 import sys
@@ -85,12 +86,12 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
     return generator
 
 
-def main_mcts(llama_ckpt='/root/autodl-tmp/llama/llama-2-7b',
+def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
               decompose_examples='data/gsm8k/prompts/decompose_examples.json',
               useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
               max_response_length=200,
-              mcts_rollouts=10,
+              mcts_rollouts=1,
               n_sample_subquestion=4,
               n_sample_confidence=8,
               temperature=0.8,
@@ -183,6 +184,12 @@ def main_mcts(llama_ckpt='/root/autodl-tmp/llama/llama-2-7b',
         answer = example['answer']
         answer = re.search('#### .*?([ $.0-9,\\-]+)', answer)
         answer = '' if answer is None else answer[1].replace(',', '').replace(' ', '').replace('$', '')
+        
+        # max_depth = determine_max_depth(world_model, question)
+        # print(f"==> the model thinks the max depth should be {max_depth}")
+        # continue
+        
+        #! ========================================
         trajs, tree, trees = reasoning_mcts_search(question, decompose_examples, useful_examples, world_model,
                                                    n_sample_subquestion=n_sample_subquestion,
                                                    mcts_rollouts=mcts_rollouts,
@@ -194,6 +201,8 @@ def main_mcts(llama_ckpt='/root/autodl-tmp/llama/llama-2-7b',
                                                    r1_default=r1_default,
                                                    eos_token_id=world_model.tokenizer.encode('\n', bos=False, eos=False)[-1],
                                                    speedup_confidence_batch_size=speedup_confidence_batch_size)
+        #! ========================================
+        
         if local_rank == 0:
             json_logs = []
             for rollout, traj in enumerate(trajs):

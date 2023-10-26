@@ -257,7 +257,6 @@ def reasoning_mcts_search(question: str,
     for _ in (pbar := trange(mcts_rollouts, disable=bool(int(os.environ.get("LOCAL_RANK", -1))), position=0)):
         mcts.rollout(root)
         root.print(mcts)
-        breakpoint()
         best_terminal_node, path_reward = mcts.max_mean_terminal(root)
         trajs.append(traj := best_terminal_node.partial_solution.split('\n\n')[-1])
         output = re.findall('The answer is (.+).*\\.', traj)
@@ -271,7 +270,6 @@ def reasoning_mcts_search(question: str,
         tree_copy.N = dict(mcts.N)
         tree_copy.M = dict(mcts.M)
         trees.append(tree_copy)
-        breakpoint()
 
     with io.StringIO() as f:
         root.print(mcts, file=f)
