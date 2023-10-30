@@ -20,7 +20,9 @@ from pathlib import Path
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from tqdm import tqdm
 from llama import ModelArgs, Transformer, Tokenizer, LLaMA 
-from transformers import AutoTokenizer, LlamaForCausalLM
+# from transformers import AutoTokenizer, LlamaForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import LlamaTokenizer, LlamaForCausalLM
 
 
 def setup_logging(log_dir, llama_ckpt):
@@ -85,8 +87,24 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
     print(f"Loaded in {time.time() - start_time:.2f} seconds")
     return generator
 
+def load_hf():
+    print("loading")
+    start_time = time.time()
+    
+    #! huggingface version of loading LLAMA =======================
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True)
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token = tokenizer.eos_token
+    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True).half().cuda().eval() #! add "half()" to fit in a smaller GPU
+    #! ============================================================
+    
+    torch.set_default_tensor_type(torch.FloatTensor)
+    generator = LLaMA(model, tokenizer)
+    print(f"Loaded in {time.time() - start_time:.2f} seconds")
+    return generator    
 
-def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
+
+def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
               decompose_examples='data/gsm8k/prompts/decompose_examples.json',
               useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
@@ -108,8 +126,14 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
     if local_rank > 0:
         sys.stdout = open(os.devnull, 'w')
 
-    tokenizer_path = os.path.join(llama_ckpt, "tokenizer.model")
-    llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
+
+    # tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True)
+    # model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True)
+
+    # tokenizer_path = os.path.join(llama_ckpt, "tokenizer.model")
+    # llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
+    llama = load_hf()
+    
     world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=None)
 
     examples = get_gsm8k_dataset('test')
