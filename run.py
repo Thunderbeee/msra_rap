@@ -88,7 +88,7 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
 
 
 def main_mcts(dataset='multiarith',
-              llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
+              llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
               decompose_examples='data/gsm8k/prompts/decompose_examples.json',
               useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
@@ -110,7 +110,10 @@ def main_mcts(dataset='multiarith',
     if local_rank > 0:
         sys.stdout = open(os.devnull, 'w')
 
-    tokenizer_path = os.path.join(llama_ckpt, "tokenizer.model")
+    if "-chat" not in llama_ckpt:
+        tokenizer_path = os.path.join(llama_ckpt, "tokenizer.model")
+    else:
+        tokenizer_path = os.path.join("/home/xyyue/zangwei/mingyuan/llama/llama-2-7b", "tokenizer.model")
     llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
     world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=None)
 
