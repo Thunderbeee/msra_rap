@@ -2,8 +2,6 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from llama import LLaMA
-
 
 class QueryLM(ABC):
     @abstractmethod
@@ -15,38 +13,16 @@ class QueryLM(ABC):
         pass
 
 
-# class QueryHfModel(QueryLM):
-#     # This is not well-tested. Please use LLaMA if possible.
-#     def query_next_token(self, prompt):
-#         raise NotImplementedError
-
-#     def __init__(self, model, tokenizer, max_response_length, device):
-#         self.model = model
-#         self.tokenizer = tokenizer
-#         self.device = device
-#         self.n_examples = 1
-#         self.max_response_length = max_response_length
-
-#     def query_LM(self, prompt, **gen_kwargs):
-#         with torch.no_grad():
-#             inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-#             # print("input length", len(inputs))
-#             # Generate
-#             generate_ids = self.model.generate(inputs.input_ids, max_new_tokens=self.max_response_length, **gen_kwargs)
-#             text = self.tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-#         return text
-
-
 class QueryLlama(QueryLM):
-    def __init__(self, llamamodel, max_response_length, log_file) -> None:
-        self.llamamodel = llamamodel
-        self.tokenizer = self.llamamodel.tokenizer
+    def __init__(self, model, tokenizer, max_response_length, log_file) -> None:
+        self.model = model
+        self.tokenizer = tokenizer
         self.max_response_length = max_response_length
         self.log_file = log_file
-        self.max_batch_size = llamamodel.model.params.max_batch_size
-        self.yes_no = self.tokenizer.encode('Yes No', bos=False, eos=False)
-        self.easy_medium_hard = self.tokenizer.encode('easy medium hard', bos=False, eos=False)
-        self._1_to_7 = self.tokenizer.encode('one two three four five six seven', bos=False, eos=False)
+        self.max_batch_size = 1
+        self.yes_no = self.tokenizer.encode('Yes No')
+        self.easy_medium_hard = self.tokenizer.encode('easy medium hard')
+        self._1_to_7 = self.tokenizer.encode('one two three four five six seven')
         self.query_LM_counter = 0
     
     def reset_counter(self):
@@ -61,9 +37,19 @@ class QueryLlama(QueryLM):
         all_results = []
         for start in range(0, num_return_sequences, self.max_batch_size):
             end = min(start + self.max_batch_size, num_return_sequences)
-            results = self.llamamodel.generate([prompt] * (end - start), max_gen_len=self.max_response_length, temperature=temperature, eos_token_id=eos_token_id)
+            encoded_prompt = self.tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt").to(self.model.device)
+            results = self.model.generate(encoded_prompt, max_length=self.max_response_length+len(encoded_prompt[0]), temperature=temperature, num_return_sequences=end - start)
+            
+            if len(results.shape) > 2:
+                results.squeeze_()
+            for generated_sequence in results:
+                generated_sequence = generated_sequence.tolist()
+                # Decode text
+                text = self.tokenizer.decode(generated_sequence, clean_up_tokenization_spaces=True)
+                all_results.append(text)
+            # text = self.tokenizer.decode(results, clean_up_tokenization_spaces=True)
             self.query_LM_counter += 1
-            all_results.extend(results)
+            
         if self.log_file:
             with open(self.log_file, "a") as f:
                 f.write("="*50+"\n")
@@ -80,9 +66,10 @@ class QueryLlama(QueryLM):
             prompts = [prompts]
         ret = []
         for prompt in prompts:
-            tokens = self.tokenizer.encode(prompt, bos=True, eos=False)
+            import pdb; pdb.set_trace()
+            tokens = self.tokenizer.encode(prompt)
             tokens = torch.tensor([tokens]).cuda().long()
-            output, h = self.llamamodel.model.forward(tokens, start_pos=0)
+            output = self.model.forward(tokens).logits[:, -1, :]
             self.query_LM_counter += 1
             ret.append(output)
         outputs = torch.cat(ret, dim=0)
@@ -92,9 +79,10 @@ class QueryLlama(QueryLM):
 
     @torch.no_grad()
     def query_difficulty_word(self, model_input: str):
-        tokens = self.tokenizer.encode(model_input, bos=True, eos=False)
+        tokens = self.tokenizer.encode(model_input)
         tokens = torch.tensor([tokens]).cuda().long()
-        output, h = self.llamamodel.model.forward(tokens, start_pos=0)  #! output: [1, 32000]
+        import pdb; pdb.set_trace()
+        output, h = self.model.forward(tokens)  #! output: [1, 32000]
         self.query_LM_counter += 1
         filtered = output[:, self.easy_medium_hard]
         dist = torch.softmax(filtered, dim=-1)  #! dist: [1, 3]
@@ -103,9 +91,9 @@ class QueryLlama(QueryLM):
     
     @torch.no_grad()
     def query_difficulty_number(self, model_input: str):
-        tokens = self.tokenizer.encode(model_input, bos=True, eos=False)
+        tokens = self.tokenizer.encode(model_input)
         tokens = torch.tensor([tokens]).cuda().long()
-        output, h = self.llamamodel.model.forward(tokens, start_pos=0)  #! output: [1, 32000]
+        output, h = self.model.forward(tokens, start_pos=0)  #! output: [1, 32000]
         self.query_LM_counter += 1
         filtered = output[:, self._1_to_7]
         dist = torch.softmax(filtered, dim=-1)  #! dist: [1, 5]

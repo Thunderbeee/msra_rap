@@ -17,12 +17,23 @@ import json
 import random
 import numpy as np
 from pathlib import Path
-from fairscale.nn.model_parallel.initialize import initialize_model_parallel
 from tqdm import tqdm
-from llama import ModelArgs, Transformer, Tokenizer, LLaMA 
 # from transformers import AutoTokenizer, LlamaForCausalLM
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers import LlamaTokenizer, LlamaForCausalLM
+from transformers import AutoTokenizer
+from transformers import LlamaForCausalLM
+
+
+@dataclass
+class ModelArgs:
+    dim: int = 512
+    n_layers: int = 8
+    n_heads: int = 8
+    vocab_size: int = -1  # defined later by tokenizer
+    multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
+    norm_eps: float = 1e-5
+
+    max_batch_size: int = 32
+    max_seq_len: int = 1024
 
 
 def setup_logging(log_dir, llama_ckpt):
@@ -42,66 +53,23 @@ def setup_random():
     torch.backends.cudnn.benchmark = False
 
 
-def setup_model_parallel() -> Tuple[int, int]:
-    local_rank = int(os.environ.get("LOCAL_RANK", -1))
-    world_size = int(os.environ.get("WORLD_SIZE", -1))
-
-    torch.distributed.init_process_group("nccl")
-    initialize_model_parallel(world_size)
-    torch.cuda.set_device(local_rank)
-
-    return local_rank, world_size
-
-
-def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, max_batch_size: int) -> LLaMA:
-    start_time = time.time()
-    print(ckpt_dir)
-    checkpoints = sorted(Path(ckpt_dir).glob("*.pth"))
-    print(checkpoints)
-    assert (
-            world_size == len(checkpoints)
-    ), f"Loading a checkpoint for MP={len(checkpoints)} but world size is {world_size}"
-    ckpt_path = checkpoints[local_rank]
-    print("Loading")
-    checkpoint = torch.load(ckpt_path, map_location="cpu")
-    with open(Path(ckpt_dir) / "params.json", "r") as f:
-        params = json.loads(f.read())
-
-    model_args: ModelArgs = ModelArgs(max_seq_len=2048, max_batch_size=max_batch_size, **params)
-    tokenizer = Tokenizer(model_path=tokenizer_path)
-    model_args.vocab_size = tokenizer.n_words
-    torch.set_default_tensor_type(torch.cuda.HalfTensor)
-    model = Transformer(model_args).cuda().half()
-    
-    #! huggingface version of loading LLAMA =======================
-    # tokenizer = AutoTokenizer.from_pretrained("/root/autodl-fs/llama/llama-2-7b-chat-to-hf/")
-    # tokenizer.padding_side = "left"
-    # tokenizer.pad_token = tokenizer.eos_token
-    # model = LlamaForCausalLM.from_pretrained("/root/autodl-fs/llama/llama-2-7b-chat-to-hf/").half().cuda().eval() #! add "half()" to fit in a smaller GPU
-    #! ============================================================
-    
-    torch.set_default_tensor_type(torch.FloatTensor)
-    model.load_state_dict(checkpoint, strict=False)
-    
-    generator = LLaMA(model, tokenizer)
-    print(f"Loaded in {time.time() - start_time:.2f} seconds")
-    return generator
-
 def load_hf():
-    print("loading")
+    print("loading tokenizer ...")
     start_time = time.time()
     
     #! huggingface version of loading LLAMA =======================
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True)
-    tokenizer.padding_side = "left"
-    tokenizer.pad_token = tokenizer.eos_token
-    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True).half().cuda().eval() #! add "half()" to fit in a smaller GPU
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", use_auth_token=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
+    print("loading model ...")
+    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", use_auth_token=True).half().cuda().eval() #! add "half()" to fit in a smaller GPU
     #! ============================================================
     
     torch.set_default_tensor_type(torch.FloatTensor)
-    generator = LLaMA(model, tokenizer)
-    print(f"Loaded in {time.time() - start_time:.2f} seconds")
-    return generator    
+    # generator = LLaMA()
+    print(f"Tokenizer and Model Loaded in {time.time() - start_time:.2f} seconds")
+    return model, tokenizer
 
 
 def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
@@ -122,19 +90,10 @@ def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
               speedup_confidence_batch_size=None):
     setup_random()
     log_dir = setup_logging(log_dir, llama_ckpt)
-    local_rank, world_size = setup_model_parallel()
-    if local_rank > 0:
-        sys.stdout = open(os.devnull, 'w')
 
-
-    # tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True)
-    # model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-13b-chat-hf", use_auth_token=True)
-
-    # tokenizer_path = os.path.join(llama_ckpt, "tokenizer.model")
-    # llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
-    llama = load_hf()
+    model, tokenizer = load_hf()
     
-    world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=None)
+    world_model = QueryLlama(model, tokenizer, max_response_length=max_response_length, log_file=None)
 
     examples = get_gsm8k_dataset('test')
     with open(decompose_examples) as f:
@@ -201,7 +160,7 @@ def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
     """ 
 
     total_correct = [0] * mcts_rollouts 
-    for i, example in enumerate((pbar := tqdm(examples, disable=local_rank > 0, position=1))):
+    for i, example in enumerate((pbar := tqdm(examples, position=1))):
         if i < resume:
             continue
         question = example['question']
@@ -223,34 +182,33 @@ def main_mcts(llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
                                                    w_exp=w_exp,
                                                    r_alpha=r_alpha,
                                                    r1_default=r1_default,
-                                                   eos_token_id=world_model.tokenizer.encode('\n', bos=False, eos=False)[-1],
+                                                   eos_token_id=world_model.tokenizer.encode('\n')[-1],
                                                    speedup_confidence_batch_size=speedup_confidence_batch_size)
         #! ========================================
         
-        if local_rank == 0:
-            json_logs = []
-            for rollout, traj in enumerate(trajs):
-                output, correct = judge_answer_gsm8k(traj, answer)
-                json_logs.append({
-                    'rollout': rollout + 1,
-                    'question': question,
-                    'answer': answer,
-                    'output': output,
-                    'correct': correct,
-                    'traj': traj,
-                    'query_LM_counter': extra_info.query_LM_counter,
-                    'num_hit_max_depth': extra_info.num_hit_max_depth,
-                    'exec_time': extra_info.exec_time
-                })
-                total_correct[rollout] += correct
-            with open(os.path.join(log_dir, f'{i:04d}.json'), 'w') as f:
-                json.dump(json_logs, f, indent=2)
-            with open(os.path.join(log_dir, f'{i:04d}.tree'), 'w') as f:
-                f.write(tree)
-            with open(os.path.join(log_dir, f'{i:04d}.pkl'), 'wb') as f:
-                pickle.dump(trees, f)
-            tqdm.write(' '.join(f'{c/(i+1-resume):0.3f}' for c in total_correct))
-            pbar.set_description(f'{total_correct[-1]}/{i+1-resume}={total_correct[-1]/(i+1-resume):.2f}')
+        json_logs = []
+        for rollout, traj in enumerate(trajs):
+            output, correct = judge_answer_gsm8k(traj, answer)
+            json_logs.append({
+                'rollout': rollout + 1,
+                'question': question,
+                'answer': answer,
+                'output': output,
+                'correct': correct,
+                'traj': traj,
+                'query_LM_counter': extra_info.query_LM_counter,
+                'num_hit_max_depth': extra_info.num_hit_max_depth,
+                'exec_time': extra_info.exec_time
+            })
+            total_correct[rollout] += correct
+        with open(os.path.join(log_dir, f'{i:04d}.json'), 'w') as f:
+            json.dump(json_logs, f, indent=2)
+        with open(os.path.join(log_dir, f'{i:04d}.tree'), 'w') as f:
+            f.write(tree)
+        with open(os.path.join(log_dir, f'{i:04d}.pkl'), 'wb') as f:
+            pickle.dump(trees, f)
+        tqdm.write(' '.join(f'{c/(i+1-resume):0.3f}' for c in total_correct))
+        pbar.set_description(f'{total_correct[-1]}/{i+1-resume}={total_correct[-1]/(i+1-resume):.2f}')
 
 
 if __name__ == '__main__':
