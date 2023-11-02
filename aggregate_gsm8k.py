@@ -6,7 +6,7 @@ from collections import defaultdict
 import fire 
 from tqdm import tqdm
 
-from rap.gsm8k_mcts import ReasoningMCTSNode
+from msra_rap.rap.reasoning_mcts import ReasoningMCTSNode
 from rap.utils.gsm8k import judge_answer_gsm8k
 
 

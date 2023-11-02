@@ -48,6 +48,8 @@ class ReasoningMCTSNode(MCTSNode):
         self.gen_fn = gen_fn
         self.r1_fn = r1_fn  
         self.depth = depth
+        if self.depth > extra_info.max_depth_reached:
+            extra_info.max_depth_reached = self.depth
         self._r0 = r0   #! usefulness score
         self._r1 = self._r1_default = r1_default    #! confidence score
         self._r_alpha = r_alpha
@@ -165,7 +167,7 @@ def reasoning_mcts_search(question: str,
         eliciting_subquestions = partial_solution + subquestion_prefix
         overall_question_output = partial_solution + decompose_examples["overall_question_prefix"].format(depth, overall_question)
 
-        if depth == max_depth:  
+        if depth == max_depth:
             candidate_partial_sol_list = [overall_question_output]
             extra_info.num_hit_max_depth += 1
         else:

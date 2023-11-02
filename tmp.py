@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from rap.models import QueryLlama
 from rap.utils.multiarith import judge_answer_multiarith, get_multiarith_dataset
-from rap.gsm8k_mcts import reasoning_mcts_search
+from rap.reasoning_mcts import reasoning_mcts_search
 from rap.helpers import *
 from typing import Tuple
 import os

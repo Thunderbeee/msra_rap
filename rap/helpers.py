@@ -7,11 +7,13 @@ class ExtraInfo:
     query_LM_counter: int = 0
     num_hit_max_depth: int = 0
     exec_time: float = 0.0
+    max_depth_reached: int = 0
     
     def reset(self):
         self.query_LM_counter = 0
         self.num_hit_max_depth = 0
         self.exec_time = 0.0
+        self.max_depth_reached = 0
 
 
 difficulty_prefix = "The level of difficulty is:"

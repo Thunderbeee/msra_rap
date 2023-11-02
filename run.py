@@ -3,7 +3,8 @@ import re
 from datetime import datetime
 from rap.models import QueryLlama
 from rap.utils.gsm8k import judge_answer_gsm8k, get_gsm8k_dataset
-from rap.gsm8k_mcts import reasoning_mcts_search
+from rap.utils.multiarith import judge_answer_multiarith, get_multiarith_dataset
+from rap.reasoning_mcts import reasoning_mcts_search
 from rap.helpers import *
 from typing import Tuple
 import os
@@ -86,7 +87,8 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
     return generator
 
 
-def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
+def main_mcts(dataset='multiarith',
+              llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
               decompose_examples='data/gsm8k/prompts/decompose_examples.json',
               useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
@@ -101,7 +103,7 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
               r1_default=1,
               resume=0,
               log_dir=None,
-              speedup_confidence_batch_size=None):
+              speedup_confidence_batch_size=2):
     setup_random()
     log_dir = setup_logging(log_dir, llama_ckpt)
     local_rank, world_size = setup_model_parallel()
@@ -112,7 +114,13 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
     llama = load(llama_ckpt, tokenizer_path, local_rank, world_size, max_batch_size)
     world_model = QueryLlama(llama, max_response_length=max_response_length, log_file=None)
 
-    examples = get_gsm8k_dataset('test')
+    if dataset == 'gsm8k':
+        examples = get_gsm8k_dataset('test')
+    elif dataset == 'multiarith':
+        examples = get_multiarith_dataset('test')
+    else:
+        raise NotImplementedError()
+        
     with open(decompose_examples) as f:
         decompose_examples = json.load(f)
     """ 
@@ -182,8 +190,10 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
             continue
         question = example['question']
         answer = example['answer']
-        answer = re.search('#### .*?([ $.0-9,\\-]+)', answer)
-        answer = '' if answer is None else answer[1].replace(',', '').replace(' ', '').replace('$', '')
+    
+        if dataset == 'gsm8k':
+            answer = re.search('#### .*?([ $.0-9,\\-]+)', answer)
+            answer = '' if answer is None else answer[1].replace(',', '').replace(' ', '').replace('$', '')
         
         # max_depth = determine_max_depth(world_model, question)
         # print(f"==> the model thinks the max depth should be {max_depth}")
@@ -206,7 +216,11 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
         if local_rank == 0:
             json_logs = []
             for rollout, traj in enumerate(trajs):
-                output, correct = judge_answer_gsm8k(traj, answer)
+                if dataset == 'gsm8k':
+                    output, correct = judge_answer_gsm8k(traj, answer)
+                elif dataset == 'multiarith':
+                    output, correct = judge_answer_multiarith(traj, answer)
+
                 json_logs.append({
                     'rollout': rollout + 1,
                     'question': question,
@@ -216,7 +230,8 @@ def main_mcts(llama_ckpt='/data/luoyingtao/llama/llama-2-13b',
                     'traj': traj,
                     'query_LM_counter': extra_info.query_LM_counter,
                     'num_hit_max_depth': extra_info.num_hit_max_depth,
-                    'exec_time': extra_info.exec_time
+                    'exec_time': extra_info.exec_time,
+                    'max_depth_reached': extra_info.max_depth_reached
                 })
                 total_correct[rollout] += correct
             with open(os.path.join(log_dir, f'{i:04d}.json'), 'w') as f:

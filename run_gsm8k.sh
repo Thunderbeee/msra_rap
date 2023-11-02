@@ -1,1 +1,0 @@
-torchrun --nproc_per_node 2 --master_port 1054 run_gsm8k.py  --speedup-confidence-batch-size 2

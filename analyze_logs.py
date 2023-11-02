@@ -7,7 +7,7 @@ def avg(list):
 
 
 def analyze(src_path):
-    query_LM_counter_list, num_hit_max_depth_list, exec_time_list = [], [], []
+    query_LM_counter_list, num_hit_max_depth_list, exec_time_list, max_depth_reached_list = [], [], [], []
     num_correct, num_examples = 0, 0
     for file in os.listdir(src_path):
         if "json" not in file:
@@ -23,17 +23,20 @@ def analyze(src_path):
         query_LM_counter_list.append(last_rollout["query_LM_counter"])
         num_hit_max_depth_list.append(last_rollout["num_hit_max_depth"])
         exec_time_list.append(last_rollout["exec_time"])
+        max_depth_reached_list.append(last_rollout["max_depth_reached"])
         if last_rollout["correct"] == True:
             num_correct += 1
     
     print(f"""
+    FOR EACH QUESTION: \n
         ==> avg. query LM: {avg(query_LM_counter_list)} \n
         ==> avg. hit max depth: {avg(num_hit_max_depth_list)} \n
         ==> avg. execution time: {avg(exec_time_list)} \n
-        ==> accuracy: {num_correct / num_examples}\n\n
+        ==> avg. max_depth_reached: {avg(max_depth_reached_list)} \n
+        ==> accuracy: {num_correct / num_examples}\n
     """)
     
 
 if __name__ == "__main__":
-    src_path = "/home/yingtao/qzt/msra_rap/logs/gsm8k_mcts_llama-2-13b/2023-1027-0902"
+    src_path = "/home/yingtao/qzt/msra_rap/logs/gsm8k_mcts_llama-2-13b/2023-1101-1306"
     analyze(src_path)
