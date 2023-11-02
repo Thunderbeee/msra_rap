@@ -35,5 +35,11 @@ def analyze(src_path):
     
 
 if __name__ == "__main__":
-    src_path = "/home/yingtao/qzt/msra_rap/logs/gsm8k_mcts_llama-2-13b/2023-1027-0902"
-    analyze(src_path)
+    src_path = [
+                "/home/xyyue/zangwei/mingyuan/rap/logs/gsm8k_mcts_llama-2-7b/2023-1102-0103",
+                "/home/xyyue/zangwei/mingyuan/rap/logs/gsm8k_mcts_llama-2-7b/2023-1102-1919", #multiarith
+                "/home/xyyue/zangwei/mingyuan/rap/logs/gsm8k_mcts_llama-2-7b-chat/2023-1102-0545",
+                "/home/xyyue/zangwei/mingyuan/rap/logs/gsm8k_mcts_llama-2-7b-chat/2023-1102-1744", #multiarith
+                ]
+    for src in src_path:
+        analyze(src)
