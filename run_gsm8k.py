@@ -58,12 +58,12 @@ def load_hf():
     start_time = time.time()
     
     #! huggingface version of loading LLAMA =======================
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", use_auth_token=True)
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-13b-hf", use_auth_token=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
     print("loading model ...")
-    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", use_auth_token=True).half().cuda().eval() #! add "half()" to fit in a smaller GPU
+    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-13b-hf", use_auth_token=True).half().cuda().eval() #! add "half()" to fit in a smaller GPU
     #! ============================================================
     
     torch.set_default_tensor_type(torch.FloatTensor)
