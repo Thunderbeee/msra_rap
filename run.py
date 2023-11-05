@@ -23,6 +23,37 @@ from tqdm import tqdm
 from llama import ModelArgs, Transformer, Tokenizer, LLaMA 
 from transformers import AutoTokenizer, LlamaForCausalLM
 
+def draw_hist(r0_path, r1_path):
+    """
+    r0_path is a list, each element in the list is a tuple. The first element of the tuple is r0_score, the second element of the tuple is whether it is predicted correctly (0 is Wrong, 1 is Correct).
+    r1_path is a list, each element in the list is a tuple. The first element of the tuple is r1_score, the second element of the tuple is whether it is predicted correctly.
+    the function `draw_hist` draws two histograms: the first histogram plot the distribution of r0_score and for each class (Wrong or Correct) has different color; the second histogram plot the distribution of r1_score and for each class (Wrong or Correct) has different color. 
+    Save two plots figure in current directory
+    Names as "distribution_r0.png" and "distribution_r1.png"
+    """
+    r0_scores, r0_correct = zip(*r0_path)
+    r1_scores, r1_correct = zip(*r1_path)
+
+    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 0], bins=300, alpha=0.5, color='red', label='Wrong')
+    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 1], bins=300, alpha=0.5, color='green', label='Correct')
+
+    plt.xlabel('r0_score')
+    plt.ylabel('Frequency')
+    plt.legend()
+    plt.title('Distribution of r0_score')
+    plt.savefig('distribution_r0.png')
+    plt.show()
+
+    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 0], bins=300, alpha=0.5, color='red', label='Wrong')
+    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 1], bins=300, alpha=0.5, color='green', label='Correct')
+
+    plt.xlabel('r1_score')
+    plt.ylabel('Frequency')
+    plt.legend()
+    plt.title('Distribution of r1_score')
+    plt.savefig('distribution_r1.png')
+    plt.show()
+
 
 def setup_logging(log_dir, llama_ckpt):
     if log_dir is None:
@@ -97,13 +128,17 @@ def main_mcts(dataset='multiarith',
               n_sample_subquestion=4,
               n_sample_confidence=8,
               temperature=0.8,
-              max_depth=6,
+              max_depth=8,
               w_exp=1,
               r_alpha=0.5,
               r1_default=1,
               resume=0,
               log_dir=None,
               speedup_confidence_batch_size=2):
+    
+    r0_record = []
+    r1_record = []
+
     setup_random()
     log_dir = setup_logging(log_dir, llama_ckpt)
     local_rank, world_size = setup_model_parallel()
@@ -189,6 +224,8 @@ def main_mcts(dataset='multiarith',
 
     total_correct = [0] * mcts_rollouts 
     for i, example in enumerate((pbar := tqdm(examples, disable=local_rank > 0, position=1))):
+        if i >= 1:
+            break
         if i < resume:
             continue
         question = example['question']
@@ -215,7 +252,6 @@ def main_mcts(dataset='multiarith',
                                                    eos_token_id=world_model.tokenizer.encode('\n', bos=False, eos=False)[-1],
                                                    speedup_confidence_batch_size=speedup_confidence_batch_size)
         #! ========================================
-        
         if local_rank == 0:
             json_logs = []
             for rollout, traj in enumerate(trajs):
@@ -245,6 +281,17 @@ def main_mcts(dataset='multiarith',
                 pickle.dump(trees, f)
             tqdm.write(' '.join(f'{c/(i+1-resume):0.3f}' for c in total_correct))
             pbar.set_description(f'{total_correct[-1]}/{i+1-resume}={total_correct[-1]/(i+1-resume):.2f}')
+
+            r0_record.append((extra_info.path_r0.item(), int(correct)))
+            r1_record.append((extra_info.path_r1, int(correct)))
+    
+    draw_hist(r0_record, r1_record)
+
+    
+
+
+
+
 
 
 if __name__ == '__main__':

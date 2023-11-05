@@ -269,7 +269,7 @@ def reasoning_mcts_search(question: str,
     for _ in (pbar := trange(mcts_rollouts, disable=bool(int(os.environ.get("LOCAL_RANK", -1))), position=0)):
         mcts.rollout(root)
         root.print(mcts)
-        best_terminal_node, path_reward = mcts.max_mean_terminal(root)
+        best_terminal_node, path_reward, path_r0, path_r1 = mcts.max_mean_terminal(root)
         trajs.append(traj := best_terminal_node.partial_solution.split('\n\n')[-1])
         output = re.findall('The answer is (.+).*\\.', traj)
         if len(output) == 0:
@@ -291,5 +291,8 @@ def reasoning_mcts_search(question: str,
 
     extra_info.query_LM_counter = world_model.query_LM_counter
     extra_info.exec_time = end - start
+    extra_info.path_r0 = path_r0
+    extra_info.path_r1 = path_r1
+    extra_info.path_reward = path_reward
 
     return trajs, tree, trees, extra_info

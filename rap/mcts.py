@@ -100,16 +100,18 @@ class MCTS:
         max_n, max_r = max((self.max_terminal(child) for child in self.parent2children[cur]), key=lambda x: x[1])
         return max_n, max_r + cur.reward
 
-    def max_mean_terminal(self, cur: MCTSNode, sum=0., cnt=0):
+    def max_mean_terminal(self, cur: MCTSNode, sum=0, sum_r0=0, sum_r1=0, cnt=0):
         if cur.is_terminal:
             if cur.visited:
-                return cur, (sum + cur.reward) / (cnt + 1)  #! average the sum along the path from root to terminal node
+                #! average the sum along the path from root to terminal node
+                return cur, (sum + cur.reward) / (cnt + 1), (sum_r0 + cur._r0) / (cnt + 1), (sum_r1 + cur._r1) / (cnt + 1)  
             else:
-                return cur, -math.inf
+                return cur, -math.inf, -math.inf, -math.inf
         if cur not in self.parent2children or not self.parent2children[cur]:
-            return cur, -math.inf
+            return cur, -math.inf, -math.inf, -math.inf
         
-        return max((self.max_mean_terminal(child, sum + cur.reward, cnt + 1) for child in self.parent2children[cur]), key=lambda x: x[1])
+        return max((self.max_mean_terminal(child, sum + cur.reward, sum_r0 + cur._r0, sum_r1 + cur._r1, cnt + 1) 
+                    for child in self.parent2children[cur]), key=lambda x: x[1])
 
     def _back_propagate(self, path, reward=0.):
         coeff = 1
