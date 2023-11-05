@@ -1,2 +1,2 @@
 torchrun --nproc_per_node 2 --master_port 1054 run_gsm8k.py  --speedup-confidence-batch-size 2
-# CUDA_VISIBLE_DEVICES=0 torchrun --nproc_per_node 1 --master_port 1054 run_gsm8k.py  --speedup-confidence-batch-size 2
+# CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node 1 --master_port 1054 run_gsm8k.py  --speedup-confidence-batch-size 2
