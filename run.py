@@ -228,8 +228,8 @@ def main_mcts(dataset='multiarith',
 
     total_correct = [0] * mcts_rollouts 
     for i, example in enumerate((pbar := tqdm(examples, disable=local_rank > 0, position=1))):
-        if i >= 1:
-            break
+        # if i >= 1:
+        #     break
         if i < resume:
             continue
         question = example['question']
