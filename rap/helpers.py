@@ -13,8 +13,8 @@ def draw_hist(r0_path, r1_path):
     r0_scores, r0_correct = zip(*r0_path)
     r1_scores, r1_correct = zip(*r1_path)
 
-    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 0], bins=10, alpha=0.5, color='red', label='Wrong')
-    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 1], bins=10, alpha=0.5, color='green', label='Correct')
+    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 0], bins=100, alpha=0.5, color='red', label='Wrong')
+    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 1], bins=100, alpha=0.5, color='green', label='Correct')
 
     plt.xlabel('r0_score')
     plt.ylabel('Frequency')
@@ -23,8 +23,8 @@ def draw_hist(r0_path, r1_path):
     plt.savefig('distribution_r0.png')
     plt.show()
 
-    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 0], bins=10, alpha=0.5, color='red', label='Wrong')
-    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 1], bins=10, alpha=0.5, color='green', label='Correct')
+    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 0], bins=100, alpha=0.5, color='red', label='Wrong')
+    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 1], bins=100, alpha=0.5, color='green', label='Correct')
 
     plt.xlabel('r1_score')
     plt.ylabel('Frequency')

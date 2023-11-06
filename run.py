@@ -34,24 +34,28 @@ def draw_hist(r0_path, r1_path):
     r0_scores, r0_correct = zip(*r0_path)
     r1_scores, r1_correct = zip(*r1_path)
 
-    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 0], bins=300, alpha=0.5, color='red', label='Wrong')
-    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 1], bins=300, alpha=0.5, color='green', label='Correct')
+    plt.figure(figsize=(8, 6))
+
+    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 0], bins=100, alpha=0.5, color='red', label='Wrong', density=True)
+    plt.hist([r0_scores[i] for i in range(len(r0_scores)) if r0_correct[i] == 1], bins=100, alpha=0.5, color='green', label='Correct', density=True)
 
     plt.xlabel('r0_score')
-    plt.ylabel('Frequency')
+    plt.ylabel('Proportion')
     plt.legend()
     plt.title('Distribution of r0_score')
-    plt.savefig('distribution_r0.png')
+    plt.savefig('distribution_r0.png', dpi=300)  
     plt.show()
 
-    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 0], bins=300, alpha=0.5, color='red', label='Wrong')
-    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 1], bins=300, alpha=0.5, color='green', label='Correct')
+    plt.figure(figsize=(8, 6))
+
+    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 0], bins=100, alpha=0.5, color='red', label='Wrong', density=True)
+    plt.hist([r1_scores[i] for i in range(len(r1_scores)) if r1_correct[i] == 1], bins=100, alpha=0.5, color='green', label='Correct', density=True)
 
     plt.xlabel('r1_score')
-    plt.ylabel('Frequency')
+    plt.ylabel('Proportion')
     plt.legend()
     plt.title('Distribution of r1_score')
-    plt.savefig('distribution_r1.png')
+    plt.savefig('distribution_r1.png', dpi=300)  
     plt.show()
 
 
@@ -119,7 +123,7 @@ def load(ckpt_dir: str, tokenizer_path: str, local_rank: int, world_size: int, m
 
 
 def main_mcts(dataset='multiarith',
-              llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b',
+              llama_ckpt='/home/xyyue/zangwei/mingyuan/llama/llama-2-7b-chat',
               decompose_examples='data/gsm8k/prompts/decompose_examples.json',
               useful_examples='data/gsm8k/prompts/useful_examples.json',
               max_batch_size=2,
